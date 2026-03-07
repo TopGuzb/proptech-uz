@@ -1,0 +1,346 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { supabase } from "@/lib/supabase";
+import AppShell from "@/components/AppShell";
+import {
+  Plus,
+  MapPin,
+  Building2,
+  Loader2,
+  X,
+  FolderKanban,
+  ArrowRight,
+} from "lucide-react";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface Project {
+  id: string;
+  name: string;
+  location: string;
+  total_buildings: number | null;
+  created_at: string;
+}
+
+interface FormState {
+  name: string;
+  location: string;
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default function ProjectsPage() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Modal state
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState<FormState>({ name: "", location: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // ── Data fetching ──────────────────────────────────────────────────────────
+
+  async function fetchProjects() {
+    setLoading(true);
+    setError(null);
+    const { data, error: fetchError } = await supabase
+      .from("projects")
+      .select("id, name, location, total_buildings, created_at")
+      .order("created_at", { ascending: false });
+
+    if (fetchError) {
+      setError(fetchError.message);
+    } else {
+      setProjects(data ?? []);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  // ── Create project ─────────────────────────────────────────────────────────
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    if (!form.name.trim() || !form.location.trim()) {
+      setFormError("Name and location are required.");
+      return;
+    }
+    setSubmitting(true);
+
+    const { error: insertError } = await supabase
+      .from("projects")
+      .insert({ name: form.name.trim(), location: form.location.trim() });
+
+    setSubmitting(false);
+
+    if (insertError) {
+      setFormError(insertError.message);
+      return;
+    }
+
+    setForm({ name: "", location: "" });
+    setShowModal(false);
+    fetchProjects();
+  }
+
+  function openModal() {
+    setForm({ name: "", location: "" });
+    setFormError(null);
+    setShowModal(true);
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  return (
+    <AppShell>
+      {/* Top bar */}
+      <header
+        className="sticky top-0 z-20 flex items-center justify-between px-6 h-14 border-b shrink-0"
+        style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}
+      >
+        <div>
+          <h1 className="text-sm font-semibold text-white">Projects</h1>
+          <p className="text-xs" style={{ color: "#475569" }}>
+            {loading ? "Loading…" : `${projects.length} project${projects.length !== 1 ? "s" : ""}`}
+          </p>
+        </div>
+        <button
+          onClick={openModal}
+          className="flex items-center gap-1.5 text-sm font-medium text-white px-3.5 py-2 rounded-lg transition-opacity hover:opacity-80"
+          style={{ backgroundColor: "#6366f1" }}
+        >
+          <Plus className="w-4 h-4" />
+          New project
+        </button>
+      </header>
+
+      <main className="px-6 py-6 w-full">
+        {/* Error */}
+        {error && (
+          <div
+            className="mb-6 rounded-lg px-4 py-3 text-sm border"
+            style={{ backgroundColor: "#1f0a0a", borderColor: "#7f1d1d", color: "#fca5a5" }}
+          >
+            {error}
+          </div>
+        )}
+
+        {/* Loading skeleton */}
+        {loading && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-xl border h-36 animate-pulse"
+                style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loading && projects.length === 0 && !error && (
+          <div className="flex flex-col items-center justify-center py-24 gap-4">
+            <div
+              className="flex items-center justify-center w-14 h-14 rounded-2xl"
+              style={{ backgroundColor: "#1e1b4b" }}
+            >
+              <FolderKanban className="w-7 h-7" style={{ color: "#6366f1" }} />
+            </div>
+            <div className="text-center">
+              <p className="text-white font-medium">No projects yet</p>
+              <p className="text-sm mt-1" style={{ color: "#475569" }}>
+                Create your first project to get started.
+              </p>
+            </div>
+            <button
+              onClick={openModal}
+              className="flex items-center gap-2 text-sm font-medium text-white px-4 py-2 rounded-lg"
+              style={{ backgroundColor: "#6366f1" }}
+            >
+              <Plus className="w-4 h-4" />
+              New project
+            </button>
+          </div>
+        )}
+
+        {/* Project cards */}
+        {!loading && projects.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.map((project) => (
+              <ProjectCard key={project.id} project={project} />
+            ))}
+          </div>
+        )}
+      </main>
+
+      {/* Create modal */}
+      {showModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.7)" }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border p-6"
+            style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}
+          >
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-semibold text-white">New project</h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+                style={{ color: "#475569" }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="proj-name"
+                  className="block text-sm font-medium mb-1.5"
+                  style={{ color: "#94a3b8" }}
+                >
+                  Project name
+                </label>
+                <input
+                  id="proj-name"
+                  type="text"
+                  required
+                  placeholder="e.g. Tashkent City"
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  className="w-full rounded-lg px-4 py-2.5 text-sm text-white outline-none placeholder:text-slate-600"
+                  style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = "#6366f1")}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = "#1e2536")}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="proj-location"
+                  className="block text-sm font-medium mb-1.5"
+                  style={{ color: "#94a3b8" }}
+                >
+                  Location
+                </label>
+                <input
+                  id="proj-location"
+                  type="text"
+                  required
+                  placeholder="e.g. Yunusobod, Tashkent"
+                  value={form.location}
+                  onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                  className="w-full rounded-lg px-4 py-2.5 text-sm text-white outline-none placeholder:text-slate-600"
+                  style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = "#6366f1")}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = "#1e2536")}
+                />
+              </div>
+
+              {formError && (
+                <p className="text-sm" style={{ color: "#fca5a5" }}>
+                  {formError}
+                </p>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors hover:bg-white/5"
+                  style={{ border: "1px solid #1e2536", color: "#64748b" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                  style={{ backgroundColor: "#6366f1" }}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Creating…
+                    </>
+                  ) : (
+                    "Create project"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </AppShell>
+  );
+}
+
+// ── Project card ──────────────────────────────────────────────────────────────
+
+function ProjectCard({ project }: { project: Project }) {
+  const createdAt = new Date(project.created_at).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  return (
+    <Link
+      href={`/projects/${project.id}`}
+      className="rounded-xl border p-5 flex flex-col gap-4 transition-all hover:border-indigo-500/40 group"
+      style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div
+          className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
+          style={{ backgroundColor: "#1e1b4b" }}
+        >
+          <Building2 className="w-5 h-5" style={{ color: "#6366f1" }} />
+        </div>
+        <span className="text-xs mt-1 shrink-0" style={{ color: "#334155" }}>
+          {createdAt}
+        </span>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-white leading-snug">{project.name}</h3>
+        <div className="flex items-center gap-1 mt-1.5">
+          <MapPin className="w-3 h-3 shrink-0" style={{ color: "#475569" }} />
+          <span className="text-xs" style={{ color: "#64748b" }}>
+            {project.location}
+          </span>
+        </div>
+      </div>
+
+      <div
+        className="flex items-center justify-between pt-3 border-t"
+        style={{ borderColor: "#1e2536" }}
+      >
+        <span className="text-xs" style={{ color: "#475569" }}>
+          Total buildings
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-white">
+            {project.total_buildings ?? "—"}
+          </span>
+          <ArrowRight
+            className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ color: "#6366f1" }}
+          />
+        </div>
+      </div>
+    </Link>
+  );
+}
