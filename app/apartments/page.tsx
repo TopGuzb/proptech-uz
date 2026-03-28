@@ -19,15 +19,16 @@ interface Apartment {
   status: ApartmentStatus;
 }
 
-interface ProjectOption { id: string; name: string; }
+interface ProjectOption  { id: string; name: string; }
 interface BuildingOption { id: string; name: string; project_id: string; }
+interface FloorOption    { id: string; floor_number: number; building_id: string; }
 
 interface CreateForm {
   project_id: string;
   building_id: string;
+  floor_id: string;
   number: string;
   rooms_count: string;   // "1" | "2" | "3" | "4"
-  floor: string;
   size_m2: string;
   price: string;
   status: ApartmentStatus;
@@ -58,8 +59,8 @@ const ROOMS_OPTIONS = [
 ];
 
 const EMPTY_FORM: CreateForm = {
-  project_id: "", building_id: "", number: "",
-  rooms_count: "2", floor: "", size_m2: "", price: "", status: "available",
+  project_id: "", building_id: "", floor_id: "", number: "",
+  rooms_count: "2", size_m2: "", price: "", status: "available",
 };
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -88,6 +89,7 @@ export default function ApartmentsPage() {
   const [formError, setFormError]     = useState<string | null>(null);
   const [projects, setProjects]       = useState<ProjectOption[]>([]);
   const [buildings, setBuildings]     = useState<BuildingOption[]>([]);
+  const [floors, setFloors]           = useState<FloorOption[]>([]);
 
   // ── Fetch apartments ───────────────────────────────────────────────────────
 
@@ -111,6 +113,7 @@ export default function ApartmentsPage() {
   async function openCreateModal() {
     setForm(EMPTY_FORM);
     setFormError(null);
+    setFloors([]);
     setShowCreate(true);
 
     const [projRes, bldRes] = await Promise.all([
@@ -119,6 +122,19 @@ export default function ApartmentsPage() {
     ]);
     setProjects(projRes.data ?? []);
     setBuildings(bldRes.data ?? []);
+  }
+
+  // When building changes, fetch its floors
+  async function handleBuildingChange(buildingId: string) {
+    setForm((f) => ({ ...f, building_id: buildingId, floor_id: "" }));
+    setFloors([]);
+    if (!buildingId) return;
+    const { data } = await supabase
+      .from("floors")
+      .select("id, floor_number, building_id")
+      .eq("building_id", buildingId)
+      .order("floor_number");
+    setFloors((data as FloorOption[]) ?? []);
   }
 
   const filteredBuildings = buildings.filter(
@@ -150,27 +166,28 @@ export default function ApartmentsPage() {
     e.preventDefault();
     setFormError(null);
 
-    const floor  = parseInt(form.floor);
-    const size   = parseFloat(form.size_m2);
-    const price  = parseFloat(form.price);
+    const size  = parseFloat(form.size_m2);
+    const price = parseFloat(form.price);
 
-    if (!form.number.trim())       { setFormError("Unit number is required."); return; }
-    if (isNaN(floor) || floor < 1) { setFormError("Floor must be a positive number."); return; }
+    if (!form.number.trim())        { setFormError("Unit number is required."); return; }
     if (isNaN(size)  || size  <= 0) { setFormError("Size must be a positive number."); return; }
     if (isNaN(price) || price <= 0) { setFormError("Price must be a positive number."); return; }
+
+    const selectedFloor = floors.find((f) => f.id === form.floor_id);
 
     setSubmitting(true);
 
     const payload: Record<string, unknown> = {
       number:      form.number.trim(),
       rooms_count: parseInt(form.rooms_count),
-      floor,
+      floor:       selectedFloor?.floor_number ?? 1,
       size_m2:     size,
       price,
       status:      form.status,
     };
     if (form.project_id)  payload.project_id  = form.project_id;
     if (form.building_id) payload.building_id = form.building_id;
+    if (form.floor_id)    payload.floor_id    = form.floor_id;
 
     const { error: insertError } = await supabase.from("apartments").insert(payload);
     setSubmitting(false);
@@ -351,64 +368,93 @@ export default function ApartmentsPage() {
             </div>
 
             <form onSubmit={handleCreate} className="space-y-4">
-              {/* Row: project + building */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Project</label>
-                  <div className="relative">
-                    <select value={form.project_id}
-                      onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value, building_id: "" }))}
-                      className="w-full appearance-none rounded-lg px-3 py-2.5 pr-8 text-sm text-white outline-none"
-                      style={inputStyle()}>
-                      <option value="" style={{ backgroundColor: "#0d1117" }}>Select…</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id} style={{ backgroundColor: "#0d1117" }}>{p.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none w-3.5 h-3.5" style={{ color: "#475569" }} />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Building</label>
-                  <div className="relative">
-                    <select value={form.building_id}
-                      onChange={(e) => setForm((f) => ({ ...f, building_id: e.target.value }))}
-                      className="w-full appearance-none rounded-lg px-3 py-2.5 pr-8 text-sm text-white outline-none"
-                      style={inputStyle()}>
-                      <option value="" style={{ backgroundColor: "#0d1117" }}>Select…</option>
-                      {filteredBuildings.map((b) => (
-                        <option key={b.id} value={b.id} style={{ backgroundColor: "#0d1117" }}>{b.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none w-3.5 h-3.5" style={{ color: "#475569" }} />
-                  </div>
+              {/* Step 1: Project */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-xs mr-1.5"
+                    style={{ backgroundColor: "#6366f1" }}>1</span>
+                  Project
+                </label>
+                <div className="relative">
+                  <select value={form.project_id}
+                    onChange={(e) => setForm((f) => ({ ...f, project_id: e.target.value, building_id: "", floor_id: "" }))}
+                    className="w-full appearance-none rounded-lg px-3 py-2.5 pr-8 text-sm text-white outline-none"
+                    style={inputStyle()}>
+                    <option value="" style={{ backgroundColor: "#0d1117" }}>Select project…</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id} style={{ backgroundColor: "#0d1117" }}>{p.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none w-3.5 h-3.5" style={{ color: "#475569" }} />
                 </div>
               </div>
 
-              {/* Row: unit number + floor */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Unit number</label>
-                  <input type="text" required placeholder="e.g. A-214"
-                    value={form.number}
-                    onChange={(e) => setForm((f) => ({ ...f, number: e.target.value }))}
-                    className="w-full rounded-lg px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600"
-                    style={inputStyle()}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = "#6366f1")}
-                    onBlur={(e)  => (e.currentTarget.style.borderColor = "#1e2536")}
-                  />
+              {/* Step 2: Building */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-xs mr-1.5"
+                    style={{ backgroundColor: form.project_id ? "#6366f1" : "#1e2536" }}>2</span>
+                  Building
+                </label>
+                <div className="relative">
+                  <select value={form.building_id}
+                    disabled={!form.project_id}
+                    onChange={(e) => handleBuildingChange(e.target.value)}
+                    className="w-full appearance-none rounded-lg px-3 py-2.5 pr-8 text-sm text-white outline-none disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={inputStyle()}>
+                    <option value="" style={{ backgroundColor: "#0d1117" }}>Select building…</option>
+                    {filteredBuildings.map((b) => (
+                      <option key={b.id} value={b.id} style={{ backgroundColor: "#0d1117" }}>{b.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none w-3.5 h-3.5" style={{ color: "#475569" }} />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Floor</label>
-                  <input type="number" required min={1} placeholder="e.g. 5"
-                    value={form.floor}
-                    onChange={(e) => setForm((f) => ({ ...f, floor: e.target.value }))}
-                    className="w-full rounded-lg px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600"
-                    style={inputStyle()}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = "#6366f1")}
-                    onBlur={(e)  => (e.currentTarget.style.borderColor = "#1e2536")}
-                  />
+              </div>
+
+              {/* Step 3: Floor */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-xs mr-1.5"
+                    style={{ backgroundColor: form.building_id ? "#6366f1" : "#1e2536" }}>3</span>
+                  Floor
+                </label>
+                <div className="relative">
+                  <select value={form.floor_id}
+                    disabled={!form.building_id}
+                    onChange={(e) => setForm((f) => ({ ...f, floor_id: e.target.value }))}
+                    className="w-full appearance-none rounded-lg px-3 py-2.5 pr-8 text-sm text-white outline-none disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={inputStyle()}>
+                    <option value="" style={{ backgroundColor: "#0d1117" }}>
+                      {floors.length === 0 && form.building_id ? "No floors — add in project view" : "Select floor…"}
+                    </option>
+                    {floors.map((f) => (
+                      <option key={f.id} value={f.id} style={{ backgroundColor: "#0d1117" }}>Floor {f.floor_number}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none w-3.5 h-3.5" style={{ color: "#475569" }} />
                 </div>
+              </div>
+
+              {/* Step 4: Unit details */}
+              <div className="pt-1 border-t" style={{ borderColor: "#1e2536" }}>
+                <p className="text-xs font-medium mb-3" style={{ color: "#94a3b8" }}>
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-xs mr-1.5"
+                    style={{ backgroundColor: "#6366f1" }}>4</span>
+                  Apartment details
+                </p>
+              </div>
+
+              {/* Unit number */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Unit number</label>
+                <input type="text" required placeholder="e.g. A-214"
+                  value={form.number}
+                  onChange={(e) => setForm((f) => ({ ...f, number: e.target.value }))}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600"
+                  style={inputStyle()}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = "#6366f1")}
+                  onBlur={(e)  => (e.currentTarget.style.borderColor = "#1e2536")}
+                />
               </div>
 
               {/* Row: rooms + status */}

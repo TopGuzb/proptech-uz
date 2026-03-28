@@ -1,19 +1,54 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Building2, LayoutDashboard, FolderKanban, Home, LogOut } from "lucide-react";
+import {
+  Building2, LayoutDashboard, FolderKanban, Home,
+  Users, BarChart2, ShieldCheck, LogOut,
+} from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const NAV_ITEMS = [
-  { href: "/dashboard",  label: "Overview",   icon: LayoutDashboard },
-  { href: "/projects",   label: "Projects",   icon: FolderKanban },
-  { href: "/apartments", label: "Apartments", icon: Home },
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Role = "admin" | "manager" | "viewer";
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  adminOnly?: boolean;
+}
+
+// ── Nav items ─────────────────────────────────────────────────────────────────
+
+const NAV_ITEMS: NavItem[] = [
+  { href: "/dashboard",  label: "Overview",    icon: LayoutDashboard },
+  { href: "/projects",   label: "Projects",    icon: FolderKanban },
+  { href: "/apartments", label: "Apartments",  icon: Home },
+  { href: "/clients",    label: "Clients",     icon: Users },
+  { href: "/seller",     label: "My Stats",    icon: BarChart2 },
+  { href: "/users",      label: "Users",       icon: ShieldCheck, adminOnly: true },
 ];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getRoleCookie(): Role | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|; )proptech-role=([^;]*)/);
+  return match ? (decodeURIComponent(match[1]) as Role) : null;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
+  const router   = useRouter();
+  const [role, setRole] = useState<Role | null>(null);
+
+  useEffect(() => {
+    setRole(getRoleCookie());
+  }, []);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -21,6 +56,16 @@ export default function Sidebar() {
     document.cookie = "proptech-role=; path=/; max-age=0";
     router.push("/login");
   }
+
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => !item.adminOnly || role === "admin"
+  );
+
+  const roleBadge: Record<Role, { label: string; bg: string; text: string }> = {
+    admin:   { label: "Admin",   bg: "#1e1b4b", text: "#a5b4fc" },
+    manager: { label: "Manager", bg: "#052e16", text: "#34d399" },
+    viewer:  { label: "Viewer",  bg: "#1e2536", text: "#64748b" },
+  };
 
   return (
     <aside
@@ -51,7 +96,7 @@ export default function Sidebar() {
         >
           Menu
         </p>
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {visibleItems.map(({ href, label, icon: Icon, adminOnly }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
@@ -65,16 +110,39 @@ export default function Sidebar() {
             >
               <Icon
                 className="w-4 h-4 shrink-0"
-                style={{ color: active ? "#6366f1" : "#475569" }}
+                style={{ color: active ? "#6366f1" : adminOnly ? "#f59e0b" : "#475569" }}
               />
               {label}
+              {adminOnly && (
+                <span
+                  className="ml-auto text-xs px-1.5 py-0.5 rounded font-medium"
+                  style={{ backgroundColor: "#1c1003", color: "#f59e0b" }}
+                >
+                  Admin
+                </span>
+              )}
             </Link>
           );
         })}
       </nav>
 
-      {/* Sign out */}
-      <div className="px-3 py-4 border-t shrink-0" style={{ borderColor: "#1e2536" }}>
+      {/* Role badge + sign out */}
+      <div className="px-3 py-4 border-t shrink-0 space-y-2" style={{ borderColor: "#1e2536" }}>
+        {role && (
+          <div className="px-3 py-2 rounded-lg flex items-center gap-2"
+            style={{ backgroundColor: "#080b14" }}>
+            <span className="text-xs" style={{ color: "#334155" }}>Role:</span>
+            <span
+              className="text-xs font-semibold px-2 py-0.5 rounded-full"
+              style={{
+                backgroundColor: roleBadge[role]?.bg,
+                color: roleBadge[role]?.text,
+              }}
+            >
+              {roleBadge[role]?.label}
+            </span>
+          </div>
+        )}
         <button
           onClick={handleSignOut}
           className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors hover:bg-white/5"
