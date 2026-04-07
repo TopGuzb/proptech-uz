@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import AppShell from "@/components/AppShell";
-import FloorPlan, { type FPFloor, type FPApartment, type FPManager } from "@/components/FloorPlan";
+import FloorPlan from "@/components/FloorPlan";
 import {
   ArrowLeft, Plus, Building2, MapPin, Layers,
   Loader2, X, ChevronRight, ChevronDown, ChevronUp,
@@ -17,10 +17,11 @@ interface Project  { id: string; name: string; location: string; created_at: str
 interface Building { id: string; project_id: string; name: string; created_at: string; }
 
 interface AptType {
-  rooms: number;
-  count: number;
+  rooms:   number;
+  count:   number;
   size_m2: number;
-  price: number;
+  price:   number;
+  enabled: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -58,12 +59,12 @@ function downloadTemplate() {
 }
 
 const INITIAL_TYPES: AptType[] = [
-  { rooms: 1, count: 1, size_m2: 45,  price: 62000  },
-  { rooms: 2, count: 2, size_m2: 65,  price: 85000  },
-  { rooms: 3, count: 1, size_m2: 90,  price: 115000 },
+  { rooms: 1, count: 1, size_m2: 45,  price: 62000,  enabled: true  },
+  { rooms: 2, count: 2, size_m2: 65,  price: 85000,  enabled: true  },
+  { rooms: 3, count: 1, size_m2: 90,  price: 115000, enabled: false },
+  { rooms: 4, count: 1, size_m2: 120, price: 150000, enabled: false },
 ];
 
-const ROOMS_OPTIONS = ["1", "2", "3", "4"];
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
@@ -77,10 +78,8 @@ export default function ProjectDetailPage() {
   const [error,     setError]     = useState<string | null>(null);
 
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null);
-  const [floors,      setFloors]      = useState<FPFloor[]>([]);
-  const [apartments,  setApartments]  = useState<FPApartment[]>([]);
-  const [managers,    setManagers]    = useState<FPManager[]>([]);
-  const [loadingFloors, setLoadingFloors] = useState(false);
+  const [fpRefreshKey,  setFpRefreshKey]  = useState(0);
+  const [aptCounts,     setAptCounts]     = useState<Record<string, number>>({});
 
   // ── Add building modal ─────────────────────────────────────────────────────
   const [showAddBuilding,   setShowAddBuilding]   = useState(false);
@@ -95,19 +94,10 @@ export default function ProjectDetailPage() {
   const [addingFloor,     setAddingFloor]     = useState(false);
   const [addFloorError,   setAddFloorError]   = useState<string | null>(null);
 
-  // ── Add apartment modal ────────────────────────────────────────────────────
-  const [showAddApt,   setShowAddApt]   = useState(false);
-  const [aptFloorId,   setAptFloorId]   = useState("");
-  const [aptForm, setAptForm] = useState({
-    number: "", rooms_count: "2", size_m2: "", price: "", status: "available" as "available" | "reserved" | "sold",
-  });
-  const [addingApt,    setAddingApt]    = useState(false);
-  const [addAptError,  setAddAptError]  = useState<string | null>(null);
-
   // ── Bulk generate modal ────────────────────────────────────────────────────
   const [showBulkGen,    setShowBulkGen]    = useState(false);
   const [bulkBuildingId, setBulkBuildingId] = useState("");
-  const [bulkFloors,     setBulkFloors]     = useState("10");
+  const [bulkFloors,     setBulkFloors]     = useState("9");
   const [bulkTypes,      setBulkTypes]      = useState<AptType[]>(INITIAL_TYPES);
   const [generating,     setGenerating]     = useState(false);
   const [genResult,      setGenResult]      = useState<string | null>(null);
@@ -125,43 +115,29 @@ export default function ProjectDetailPage() {
 
   const fetchProject = useCallback(async () => {
     setLoading(true);
-    const [projRes, buildRes] = await Promise.all([
+    const [projRes, buildRes, aptsRes] = await Promise.all([
       supabase.from("projects").select("id, name, location, created_at").eq("id", id).single(),
       supabase.from("buildings").select("id, project_id, name, created_at").eq("project_id", id).order("created_at"),
+      supabase.from("apartments").select("building_id").eq("project_id", id),
     ]);
     if (projRes.error)  { setError(projRes.error.message);  setLoading(false); return; }
     if (buildRes.error) { setError(buildRes.error.message); setLoading(false); return; }
     setProject(projRes.data);
     setBuildings(buildRes.data ?? []);
+    // Count apartments per building
+    const counts: Record<string, number> = {};
+    for (const apt of (aptsRes.data ?? [])) {
+      counts[apt.building_id] = (counts[apt.building_id] ?? 0) + 1;
+    }
+    setAptCounts(counts);
     setLoading(false);
   }, [id]);
 
-  const fetchBuildingData = useCallback(async (buildingId: string) => {
-    setLoadingFloors(true);
-    const [floorsRes, aptsRes] = await Promise.all([
-      supabase.from("floors").select("id, floor_number").eq("building_id", buildingId).order("floor_number"),
-      supabase.from("apartments").select("id, floor_id, number, rooms_count, floor, size_m2, price, status").eq("building_id", buildingId),
-    ]);
-    setFloors((floorsRes.data as FPFloor[]) ?? []);
-    setApartments((aptsRes.data as FPApartment[]) ?? []);
-    setLoadingFloors(false);
-  }, []);
-
   useEffect(() => { fetchProject(); }, [fetchProject]);
-
-  useEffect(() => {
-    supabase.from("user_profiles").select("id, full_name, email").eq("role", "manager")
-      .then(({ data }) => setManagers((data as FPManager[]) ?? []));
-  }, []);
-
-  useEffect(() => {
-    if (selectedBuilding) fetchBuildingData(selectedBuilding.id);
-    else { setFloors([]); setApartments([]); }
-  }, [selectedBuilding, fetchBuildingData]);
 
   // ── Add building ───────────────────────────────────────────────────────────
 
-  async function handleAddBuilding(e: React.FormEvent) {
+  async function handleAddBuilding(e: { preventDefault(): void }) {
     e.preventDefault();
     setAddBuildingError(null);
     if (!buildingName.trim()) { setAddBuildingError("Название обязательно."); return; }
@@ -178,47 +154,22 @@ export default function ProjectDetailPage() {
     setFloorBuildingId(buildingId); setFloorNumber(""); setAddFloorError(null); setShowAddFloor(true);
   }
 
-  async function handleAddFloor(e: React.FormEvent) {
+  async function handleAddFloor(e: { preventDefault(): void }) {
     e.preventDefault();
     setAddFloorError(null);
     const num = parseInt(floorNumber);
-    if (isNaN(num) || num < 1)                        { setAddFloorError("Введите корректный номер."); return; }
-    if (floors.some((f) => f.floor_number === num))   { setAddFloorError("Этаж уже существует."); return; }
+    if (isNaN(num) || num < 1) { setAddFloorError("Введите корректный номер."); return; }
     setAddingFloor(true);
+    // Check for duplicate without local state
+    const { count } = await supabase
+      .from("floors").select("id", { count: "exact", head: true })
+      .eq("building_id", floorBuildingId).eq("floor_number", num);
+    if ((count ?? 0) > 0) { setAddingFloor(false); setAddFloorError("Этаж уже существует."); return; }
     const { error: err } = await supabase.from("floors").insert({ building_id: floorBuildingId, floor_number: num });
     setAddingFloor(false);
     if (err) { setAddFloorError(err.message); return; }
     setShowAddFloor(false);
-    if (selectedBuilding) fetchBuildingData(selectedBuilding.id);
-  }
-
-  // ── Add apartment ──────────────────────────────────────────────────────────
-
-  function openAddApt(floorId: string) {
-    setAptFloorId(floorId);
-    setAptForm({ number: "", rooms_count: "2", size_m2: "", price: "", status: "available" });
-    setAddAptError(null); setShowAddApt(true);
-  }
-
-  async function handleAddApt(e: React.FormEvent) {
-    e.preventDefault();
-    setAddAptError(null);
-    const size  = parseFloat(aptForm.size_m2);
-    const price = parseFloat(aptForm.price);
-    if (!aptForm.number.trim())     { setAddAptError("Номер квартиры обязателен."); return; }
-    if (isNaN(size)  || size  <= 0) { setAddAptError("Площадь должна быть положительной."); return; }
-    if (isNaN(price) || price <= 0) { setAddAptError("Цена должна быть положительной."); return; }
-    const floorObj = floors.find((f) => f.id === aptFloorId);
-    setAddingApt(true);
-    const { error: err } = await supabase.from("apartments").insert({
-      project_id: id, building_id: selectedBuilding!.id, floor_id: aptFloorId,
-      floor: floorObj?.floor_number ?? 1, number: aptForm.number.trim(),
-      rooms_count: parseInt(aptForm.rooms_count), size_m2: size, price, status: aptForm.status,
-    });
-    setAddingApt(false);
-    if (err) { setAddAptError(err.message); return; }
-    setShowAddApt(false);
-    if (selectedBuilding) fetchBuildingData(selectedBuilding.id);
+    setFpRefreshKey((k) => k + 1);
   }
 
   // ── Bulk generate ──────────────────────────────────────────────────────────
@@ -227,7 +178,7 @@ export default function ProjectDetailPage() {
     setGenError(null); setGenResult(null);
     const floorsNum = parseInt(bulkFloors);
     if (isNaN(floorsNum) || floorsNum < 1) { setGenError("Введите корректное кол-во этажей."); return; }
-    const validTypes = bulkTypes.filter((t) => t.count > 0);
+    const validTypes = bulkTypes.filter((t) => t.enabled && t.count > 0);
     if (!validTypes.length) { setGenError("Добавьте хотя бы один тип квартиры."); return; }
     setGenerating(true);
     try {
@@ -239,7 +190,8 @@ export default function ProjectDetailPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Ошибка");
       setGenResult(`✓ Создано этажей: ${json.created_floors}, квартир: ${json.created_apartments}`);
-      if (selectedBuilding?.id === bulkBuildingId) fetchBuildingData(bulkBuildingId);
+      if (selectedBuilding?.id === bulkBuildingId) setFpRefreshKey((k) => k + 1);
+      fetchProject();
     } catch (err) {
       setGenError(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -288,7 +240,8 @@ export default function ProjectDetailPage() {
       if (!res.ok) throw new Error(json.error ?? "Ошибка");
       const errMsg = json.errors?.length ? ` (${json.errors.length} ошибок)` : "";
       setImportResult(`✓ Импортировано ${json.imported} из ${json.total}${errMsg}`);
-      if (selectedBuilding?.id === importBuildingId) fetchBuildingData(importBuildingId);
+      if (selectedBuilding?.id === importBuildingId) setFpRefreshKey((k) => k + 1);
+      fetchProject();
     } catch (err) {
       setImportFileErr(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -298,8 +251,8 @@ export default function ProjectDetailPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const totalAperFloor = bulkTypes.reduce((s, t) => s + (t.count || 0), 0);
-  const bulkPreview    = `${parseInt(bulkFloors) || 0} эт. × ${totalAperFloor} кв. = ${(parseInt(bulkFloors) || 0) * totalAperFloor} квартир`;
+  const totalAperFloor = bulkTypes.filter((t) => t.enabled).reduce((s, t) => s + (t.count || 0), 0);
+  const bulkPreview    = `Создаст ${parseInt(bulkFloors) || 0} этажей и ${(parseInt(bulkFloors) || 0) * totalAperFloor} квартир`;
 
   return (
     <AppShell>
@@ -347,10 +300,6 @@ export default function ProjectDetailPage() {
                 <p className="text-xl font-bold text-white">{buildings.length}</p>
                 <p className="text-xs mt-0.5" style={{ color: "#475569" }}>Корпусов</p>
               </div>
-              <div>
-                <p className="text-xl font-bold text-white">{apartments.length}</p>
-                <p className="text-xs mt-0.5" style={{ color: "#475569" }}>Квартир</p>
-              </div>
             </div>
           </div>
         )}
@@ -395,7 +344,12 @@ export default function ProjectDetailPage() {
                           style={{ backgroundColor: active ? "#6366f1" : "#1e1b4b" }}>
                           <Building2 className="w-4 h-4 text-white" />
                         </div>
-                        <p className="text-sm font-semibold text-white truncate">{b.name}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{b.name}</p>
+                          <p className="text-xs mt-0.5" style={{ color: "#475569" }}>
+                            {aptCounts[b.id] ?? 0} квартир
+                          </p>
+                        </div>
                       </div>
                       {active
                         ? <ChevronUp   className="w-4 h-4 shrink-0" style={{ color: "#6366f1" }} />
@@ -443,51 +397,14 @@ export default function ProjectDetailPage() {
               <h2 className="text-sm font-semibold text-white">
                 План — {selectedBuilding.name}
               </h2>
-              <span className="text-xs px-2 py-0.5 rounded-full"
-                style={{ backgroundColor: "#1e1b4b", color: "#a5b4fc" }}>
-                {floors.length} этажей
-              </span>
-              {floors.length > 0 && (
-                <button
-                  onClick={() => openAddFloor(selectedBuilding.id)}
-                  className="ml-auto flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border transition-colors hover:border-indigo-500/40"
-                  style={{ borderColor: "#1e2536", color: "#64748b" }}>
-                  <Plus className="w-3 h-3" />Этаж
-                </button>
-              )}
+              <button
+                onClick={() => openAddFloor(selectedBuilding.id)}
+                className="ml-auto flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border transition-colors hover:border-indigo-500/40"
+                style={{ borderColor: "#1e2536", color: "#64748b" }}>
+                <Plus className="w-3 h-3" />Этаж
+              </button>
             </div>
-
-            {loadingFloors ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#6366f1" }} />
-              </div>
-            ) : floors.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-14 gap-3 rounded-xl border"
-                style={{ borderColor: "#1e2536", borderStyle: "dashed" }}>
-                <Layers className="w-6 h-6" style={{ color: "#1e2536" }} />
-                <p className="text-sm" style={{ color: "#475569" }}>Нет этажей. Добавьте вручную или используйте массовое создание.</p>
-                <div className="flex gap-2">
-                  <button onClick={() => openAddFloor(selectedBuilding.id)}
-                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg"
-                    style={{ backgroundColor: "#1e1b4b", color: "#a5b4fc" }}>
-                    <Plus className="w-3 h-3" />Добавить этаж
-                  </button>
-                  <button
-                    onClick={() => { setBulkBuildingId(selectedBuilding.id); setGenResult(null); setGenError(null); setBulkTypes(INITIAL_TYPES); setBulkFloors("10"); setShowBulkGen(true); }}
-                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg"
-                    style={{ backgroundColor: "#0f0a30", color: "#a5b4fc", border: "1px solid #1e1b4b" }}>
-                    <Zap className="w-3 h-3" />Массовое создание
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <FloorPlan
-                floors={floors}
-                apartments={apartments}
-                managers={managers}
-                onRefresh={() => fetchBuildingData(selectedBuilding.id)}
-              />
-            )}
+            <FloorPlan building_id={selectedBuilding.id} refreshKey={fpRefreshKey} />
           </div>
         )}
       </main>
@@ -529,76 +446,6 @@ export default function ProjectDetailPage() {
         </Modal>
       )}
 
-      {/* Add apartment */}
-      {showAddApt && (
-        <Modal title="Добавить квартиру" onClose={() => setShowAddApt(false)}>
-          <form onSubmit={handleAddApt} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Номер кв.</label>
-                <input type="text" required placeholder="напр. А-301"
-                  value={aptForm.number} onChange={(e) => setAptForm((f) => ({ ...f, number: e.target.value }))}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600"
-                  style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = "#6366f1")}
-                  onBlur={(e)  => (e.currentTarget.style.borderColor = "#1e2536")} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Статус</label>
-                <select value={aptForm.status}
-                  onChange={(e) => setAptForm((f) => ({ ...f, status: e.target.value as typeof aptForm.status }))}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white outline-none appearance-none"
-                  style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }}>
-                  {(["available", "reserved", "sold"] as const).map((s) => (
-                    <option key={s} value={s} style={{ backgroundColor: "#0d1117" }}>
-                      {s === "available" ? "Свободна" : s === "reserved" ? "Забронирована" : "Продана"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Комнаты</label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {ROOMS_OPTIONS.map((v) => (
-                  <button key={v} type="button"
-                    onClick={() => setAptForm((f) => ({ ...f, rooms_count: v }))}
-                    className="py-2 rounded-lg text-xs font-medium border transition-colors"
-                    style={{
-                      backgroundColor: aptForm.rooms_count === v ? "#1e1b4b" : "#080b14",
-                      borderColor:     aptForm.rooms_count === v ? "#6366f1" : "#1e2536",
-                      color:           aptForm.rooms_count === v ? "#a5b4fc" : "#64748b",
-                    }}>
-                    {v === "4" ? "4+" : v}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Площадь (м²)</label>
-                <input type="number" required min={1} step="0.1" placeholder="65.5"
-                  value={aptForm.size_m2} onChange={(e) => setAptForm((f) => ({ ...f, size_m2: e.target.value }))}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600"
-                  style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = "#6366f1")}
-                  onBlur={(e)  => (e.currentTarget.style.borderColor = "#1e2536")} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Цена ($)</label>
-                <input type="number" required min={1} placeholder="75000"
-                  value={aptForm.price} onChange={(e) => setAptForm((f) => ({ ...f, price: e.target.value }))}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600"
-                  style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = "#6366f1")}
-                  onBlur={(e)  => (e.currentTarget.style.borderColor = "#1e2536")} />
-              </div>
-            </div>
-            {addAptError && <ErrMsg msg={addAptError} />}
-            <ModalButtons onCancel={() => setShowAddApt(false)} loading={addingApt} label="Добавить" />
-          </form>
-        </Modal>
-      )}
 
       {/* ── Bulk generate modal ─────────────────────────────────────────────── */}
       {showBulkGen && (
@@ -634,67 +481,74 @@ export default function ProjectDetailPage() {
 
               {/* Apartment types table */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium" style={{ color: "#94a3b8" }}>Типы квартир</label>
-                  <button
-                    onClick={() => setBulkTypes((t) => [...t, { rooms: 1, count: 1, size_m2: 45, price: 60000 }])}
-                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg"
-                    style={{ backgroundColor: "#1e1b4b", color: "#a5b4fc" }}>
-                    <Plus className="w-3 h-3" />Добавить тип
-                  </button>
-                </div>
+                <label className="block text-xs font-medium mb-2" style={{ color: "#94a3b8" }}>
+                  Типы квартир
+                </label>
                 <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#1e2536" }}>
                   <table className="w-full">
                     <thead>
                       <tr style={{ borderBottom: "1px solid #1e2536" }}>
-                        {["Комн.", "Кол-во", "Площадь м²", "Цена $", ""].map((h) => (
+                        {["", "Тип", "Кол-во/этаж", "Площадь м²", "Цена $"].map((h) => (
                           <th key={h} className="px-3 py-2 text-left text-xs font-medium"
                             style={{ color: "#475569", backgroundColor: "#080b14" }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {bulkTypes.map((type, idx) => (
-                        <tr key={idx}
-                          style={{ borderBottom: idx < bulkTypes.length - 1 ? "1px solid #1e2536" : undefined }}>
-                          <td className="px-2 py-2">
-                            <select value={type.rooms}
-                              onChange={(e) => setBulkTypes((t) => t.map((r, i) => i === idx ? { ...r, rooms: parseInt(e.target.value) } : r))}
-                              className="w-14 rounded px-1.5 py-1.5 text-xs text-white outline-none appearance-none"
-                              style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }}>
-                              {[1, 2, 3, 4].map((r) => (
-                                <option key={r} value={r} style={{ backgroundColor: "#0d1117" }}>
-                                  {r}{r === 4 ? "+" : ""}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-2 py-2">
-                            <input type="number" min={0} value={type.count}
-                              onChange={(e) => setBulkTypes((t) => t.map((r, i) => i === idx ? { ...r, count: parseInt(e.target.value) || 0 } : r))}
-                              className="w-14 rounded px-1.5 py-1.5 text-xs text-white outline-none"
-                              style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }} />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input type="number" min={1} step="0.1" value={type.size_m2}
-                              onChange={(e) => setBulkTypes((t) => t.map((r, i) => i === idx ? { ...r, size_m2: parseFloat(e.target.value) || 0 } : r))}
-                              className="w-20 rounded px-1.5 py-1.5 text-xs text-white outline-none"
-                              style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }} />
-                          </td>
-                          <td className="px-2 py-2">
-                            <input type="number" min={1} value={type.price}
-                              onChange={(e) => setBulkTypes((t) => t.map((r, i) => i === idx ? { ...r, price: parseFloat(e.target.value) || 0 } : r))}
-                              className="w-24 rounded px-1.5 py-1.5 text-xs text-white outline-none"
-                              style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }} />
-                          </td>
-                          <td className="px-2 py-2">
-                            <button onClick={() => setBulkTypes((t) => t.filter((_, i) => i !== idx))}
-                              className="p-1 rounded hover:bg-red-500/10" style={{ color: "#475569" }}>
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {bulkTypes.map((type, idx) => {
+                        const toggle = () =>
+                          setBulkTypes((t) => t.map((r, i) => i === idx ? { ...r, enabled: !r.enabled } : r));
+                        const update = (field: keyof AptType, val: number) =>
+                          setBulkTypes((t) => t.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+                        return (
+                          <tr key={idx}
+                            style={{
+                              borderBottom: idx < bulkTypes.length - 1 ? "1px solid #1e2536" : undefined,
+                              opacity: type.enabled ? 1 : 0.4,
+                            }}>
+                            {/* Toggle */}
+                            <td className="px-3 py-2.5">
+                              <button onClick={toggle}
+                                className="w-8 h-4 rounded-full relative transition-colors shrink-0"
+                                style={{ backgroundColor: type.enabled ? "#6366f1" : "#1e2536" }}>
+                                <span
+                                  className="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all"
+                                  style={{ left: type.enabled ? "calc(100% - 14px)" : "2px" }} />
+                              </button>
+                            </td>
+                            {/* Label */}
+                            <td className="px-3 py-2.5">
+                              <span className="text-xs font-medium" style={{ color: type.enabled ? "#e2e8f0" : "#475569" }}>
+                                {type.rooms}-комн.
+                              </span>
+                            </td>
+                            {/* Count */}
+                            <td className="px-2 py-2">
+                              <input type="number" min={0} max={20} value={type.count}
+                                disabled={!type.enabled}
+                                onChange={(e) => update("count", parseInt(e.target.value) || 0)}
+                                className="w-14 rounded px-1.5 py-1.5 text-xs text-white outline-none disabled:cursor-not-allowed"
+                                style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }} />
+                            </td>
+                            {/* Size */}
+                            <td className="px-2 py-2">
+                              <input type="number" min={1} step="0.1" value={type.size_m2}
+                                disabled={!type.enabled}
+                                onChange={(e) => update("size_m2", parseFloat(e.target.value) || 0)}
+                                className="w-20 rounded px-1.5 py-1.5 text-xs text-white outline-none disabled:cursor-not-allowed"
+                                style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }} />
+                            </td>
+                            {/* Price */}
+                            <td className="px-2 py-2">
+                              <input type="number" min={1} value={type.price}
+                                disabled={!type.enabled}
+                                onChange={(e) => update("price", parseFloat(e.target.value) || 0)}
+                                className="w-24 rounded px-1.5 py-1.5 text-xs text-white outline-none disabled:cursor-not-allowed"
+                                style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }} />
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

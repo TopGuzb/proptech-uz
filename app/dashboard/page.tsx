@@ -1,33 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import {
-  Building2,
-  TrendingUp,
-  DollarSign,
-  Home,
-  Bell,
-  Search,
-  ChevronUp,
-  ChevronDown,
-  Sparkles,
-  Lightbulb,
-  Loader2,
+  Building2, TrendingUp, DollarSign, Home, Bell, Search,
+  ChevronUp, ChevronDown, Sparkles, Lightbulb, Loader2,
 } from "lucide-react";
 import AppShell from "@/components/AppShell";
+import { supabase } from "@/lib/supabase";
 
-// ── Placeholder data ──────────────────────────────────────────────────────────
+// ── Static chart data (kept as-is) ───────────────────────────────────────────
 
 const monthlySales = [
   { month: "Sep", revenue: 820, units: 12 },
@@ -46,28 +31,31 @@ const projectData = [
   { name: "Sergeli", sold: 32, available: 68, reserved: 3 },
 ];
 
-const recentTransactions = [
-  { id: "TXN-001", client: "Alisher Nazarov", apartment: "A-214", project: "Tashkent City", amount: "$85,000", date: "Mar 07", status: "completed" },
-  { id: "TXN-002", client: "Dilnoza Yusupova", apartment: "B-108", project: "Yunusobod", amount: "$62,500", date: "Mar 06", status: "pending" },
-  { id: "TXN-003", client: "Bobur Tashmatov", apartment: "C-315", project: "Mirzo Ulugbek", amount: "$74,000", date: "Mar 05", status: "completed" },
-  { id: "TXN-004", client: "Malika Akhmedova", apartment: "A-101", project: "Sergeli", amount: "$48,000", date: "Mar 04", status: "reserved" },
-  { id: "TXN-005", client: "Jasur Mirzaev", apartment: "D-220", project: "Tashkent City", amount: "$91,000", date: "Mar 03", status: "completed" },
-];
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface MetricCardProps {
-  title: string;
-  value: string;
-  change: string;
-  positive: boolean;
-  icon: React.ReactNode;
-  accent: string;
+  title:    string;
+  value:    string;
+  change?:  string;
+  positive?: boolean;
+  loading?: boolean;
+  icon:     React.ReactNode;
+  accent:   string;
+}
+
+interface Transaction {
+  id:        string;
+  client:    string;
+  apartment: string;
+  project:   string;
+  amount:    string;
+  date:      string;
+  status:    "completed" | "pending" | "reserved";
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function MetricCard({ title, value, change, positive, icon, accent }: MetricCardProps) {
+function MetricCard({ title, value, change, positive, loading, icon, accent }: MetricCardProps) {
   return (
     <div
       className="rounded-xl p-5 border flex flex-col gap-4"
@@ -85,23 +73,26 @@ function MetricCard({ title, value, change, positive, icon, accent }: MetricCard
         </div>
       </div>
       <div>
-        <p className="text-2xl font-bold text-white">{value}</p>
-        <div className="flex items-center gap-1 mt-1">
-          {positive ? (
-            <ChevronUp className="w-3.5 h-3.5" style={{ color: "#10b981" }} />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5" style={{ color: "#ef4444" }} />
-          )}
-          <span
-            className="text-xs font-medium"
-            style={{ color: positive ? "#10b981" : "#ef4444" }}
-          >
-            {change}
-          </span>
-          <span className="text-xs" style={{ color: "#334155" }}>
-            vs last month
-          </span>
-        </div>
+        {loading ? (
+          <div className="h-8 w-24 rounded-lg animate-pulse" style={{ backgroundColor: "#1e2536" }} />
+        ) : (
+          <p className="text-2xl font-bold text-white">{value}</p>
+        )}
+        {change && (
+          <div className="flex items-center gap-1 mt-1">
+            {positive ? (
+              <ChevronUp className="w-3.5 h-3.5" style={{ color: "#10b981" }} />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" style={{ color: "#ef4444" }} />
+            )}
+            <span
+              className="text-xs font-medium"
+              style={{ color: positive ? "#10b981" : "#ef4444" }}
+            >
+              {change}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -117,6 +108,108 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
 
 export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
+
+  // ── Real metrics ──────────────────────────────────────────────────────────
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [totalApts,   setTotalApts]   = useState(0);
+  const [soldApts,    setSoldApts]    = useState(0);
+  const [availApts,   setAvailApts]   = useState(0);
+  const [revenue,     setRevenue]     = useState(0);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+
+  useEffect(() => {
+    async function loadMetrics() {
+      setMetricsLoading(true);
+      const [totalRes, soldRes, availRes, revenueRes, txRes] = await Promise.all([
+        supabase.from("apartments").select("*", { count: "exact", head: true }),
+        supabase.from("apartments").select("*", { count: "exact", head: true }).eq("status", "sold"),
+        supabase.from("apartments").select("*", { count: "exact", head: true }).eq("status", "available"),
+        supabase.from("apartments").select("price").eq("status", "sold"),
+        supabase
+          .from("clients")
+          .select("id, full_name, status, created_at, apartments(number, price)")
+          .in("status", ["reserved", "bought"])
+          .order("created_at", { ascending: false })
+          .limit(5),
+      ]);
+
+      setTotalApts(totalRes.count ?? 0);
+      setSoldApts(soldRes.count ?? 0);
+      setAvailApts(availRes.count ?? 0);
+      setRevenue((revenueRes.data ?? []).reduce((sum, a) => sum + (a.price || 0), 0));
+
+      // build transaction rows from real client data
+      const rows: Transaction[] = (txRes.data ?? []).map((c, i) => {
+        const apt = (c.apartments as { number: string; price: number }[] | undefined)?.[0];
+        return {
+          id:        `TXN-${String(i + 1).padStart(3, "0")}`,
+          client:    c.full_name,
+          apartment: apt ? `№${apt.number}` : "—",
+          project:   "—",
+          amount:    apt ? `$${apt.price.toLocaleString()}` : "—",
+          date:      new Date(c.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          status:    c.status === "bought" ? "completed" : "reserved",
+        };
+      });
+      setTransactions(rows);
+      setMetricsLoading(false);
+    }
+    loadMetrics();
+  }, []);
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  const [showNotif,    setShowNotif]    = useState(false);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifications, setNotifications] = useState<
+    { id: string; full_name: string; status: string; created_at: string }[]
+  >([]);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const fetchNotifications = useCallback(async () => {
+    setNotifLoading(true);
+    const { data } = await supabase
+      .from("clients")
+      .select("id, full_name, status, created_at")
+      .neq("status", "new")
+      .order("created_at", { ascending: false })
+      .limit(5);
+    setNotifications(data ?? []);
+    setNotifLoading(false);
+  }, []);
+
+  function toggleNotif() {
+    if (!showNotif) fetchNotifications();
+    setShowNotif((v) => !v);
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    if (!showNotif) return;
+    function handler(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotif(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showNotif]);
+
+  function timeAgo(iso: string) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1)   return "только что";
+    if (m < 60)  return `${m} мин. назад`;
+    const h = Math.floor(m / 60);
+    if (h < 24)  return `${h} ч. назад`;
+    return `${Math.floor(h / 24)} д. назад`;
+  }
+
+  const STATUS_NOTIF: Record<string, { label: string; color: string }> = {
+    contacted: { label: "Контакт",  color: "#6366f1" },
+    viewing:   { label: "Просмотр", color: "#f59e0b" },
+    reserved:  { label: "Бронь",    color: "#10b981" },
+    bought:    { label: "Продано",  color: "#22c55e" },
+  };
 
   // ── AI Insights ──────────────────────────────────────────────────────────
   const [insights, setInsights]     = useState<string[]>([]);
@@ -139,7 +232,7 @@ export default function DashboardPage() {
     }
   }
 
-  const filteredTransactions = recentTransactions.filter(
+  const filteredTransactions = transactions.filter(
     (t) =>
       t.client.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.project.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -157,16 +250,59 @@ export default function DashboardPage() {
           <h1 className="text-sm font-semibold text-white">Overview</h1>
           <p className="text-xs" style={{ color: "#475569" }}>March 2026 · All projects</p>
         </div>
-        <button
-          className="relative p-2 rounded-lg transition-colors hover:bg-white/5"
-          style={{ color: "#64748b" }}
-        >
-          <Bell className="w-4 h-4" />
-          <span
-            className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full"
-            style={{ backgroundColor: "#6366f1" }}
-          />
-        </button>
+        <div className="relative" ref={notifRef}>
+          <button
+            onClick={toggleNotif}
+            className="relative p-2 rounded-lg transition-colors hover:bg-white/5"
+            style={{ color: showNotif ? "#a5b4fc" : "#64748b" }}
+          >
+            <Bell className="w-4 h-4" />
+            {notifications.length > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full"
+                style={{ backgroundColor: "#6366f1" }} />
+            )}
+          </button>
+
+          {showNotif && (
+            <div
+              className="absolute right-0 top-10 w-72 rounded-xl border shadow-2xl z-50 overflow-hidden"
+              style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}
+            >
+              <div className="px-4 py-3 border-b" style={{ borderColor: "#1e2536" }}>
+                <p className="text-xs font-semibold text-white">Уведомления</p>
+              </div>
+
+              {notifLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#6366f1" }} />
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="px-4 py-6 text-center">
+                  <p className="text-xs" style={{ color: "#475569" }}>Нет уведомлений</p>
+                </div>
+              ) : (
+                <div className="divide-y" style={{ borderColor: "#1e2536" }}>
+                  {notifications.map((n) => {
+                    const cfg = STATUS_NOTIF[n.status];
+                    return (
+                      <div key={n.id} className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium text-white truncate">{n.full_name}</p>
+                          <span className="text-[10px] shrink-0" style={{ color: "#334155" }}>
+                            {timeAgo(n.created_at)}
+                          </span>
+                        </div>
+                        <p className="text-[10px] mt-0.5" style={{ color: cfg?.color ?? "#64748b" }}>
+                          → {cfg?.label ?? n.status}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </header>
 
       <main className="px-6 py-6 max-w-7xl mx-auto space-y-6 w-full">
@@ -174,33 +310,35 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Total Apartments"
-            value="1,248"
-            change="+8.2%"
-            positive
+            value={totalApts.toLocaleString()}
+            loading={metricsLoading}
             accent="#6366f1"
             icon={<Building2 className="w-4 h-4" />}
           />
           <MetricCard
             title="Sold"
-            value="834"
-            change="+14.5%"
-            positive
+            value={soldApts.toLocaleString()}
+            loading={metricsLoading}
             accent="#10b981"
             icon={<TrendingUp className="w-4 h-4" />}
           />
           <MetricCard
             title="Available"
-            value="294"
-            change="-3.1%"
-            positive={false}
+            value={availApts.toLocaleString()}
+            loading={metricsLoading}
             accent="#f59e0b"
             icon={<Home className="w-4 h-4" />}
           />
           <MetricCard
             title="Revenue"
-            value="$18.4M"
-            change="+22.8%"
-            positive
+            value={
+              revenue >= 1_000_000
+                ? `$${(revenue / 1_000_000).toFixed(1)}M`
+                : revenue >= 1_000
+                ? `$${(revenue / 1_000).toFixed(0)}K`
+                : `$${revenue.toLocaleString()}`
+            }
+            loading={metricsLoading}
             accent="#6366f1"
             icon={<DollarSign className="w-4 h-4" />}
           />

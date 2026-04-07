@@ -1,17 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import AppShell from "@/components/AppShell";
+import { useRouter } from "next/navigation";
 import {
-  Plus,
-  MapPin,
-  Building2,
-  Loader2,
-  X,
-  FolderKanban,
-  ArrowRight,
+  Plus, MapPin, Building2, Loader2, X,
+  FolderKanban, ArrowRight, Pencil, Trash2,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -32,15 +27,26 @@ interface FormState {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState<string | null>(null);
 
-  // Modal state
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState<FormState>({ name: "", location: "" });
+  // Create modal
+  const [showModal,  setShowModal]  = useState(false);
+  const [form,       setForm]       = useState<FormState>({ name: "", location: "" });
   const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError,  setFormError]  = useState<string | null>(null);
+
+  // Edit modal
+  const [editProject,    setEditProject]    = useState<Project | null>(null);
+  const [editForm,       setEditForm]       = useState<FormState>({ name: "", location: "" });
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError,      setEditError]      = useState<string | null>(null);
+
+  // Delete confirmation
+  const [deleteProject,  setDeleteProject]  = useState<Project | null>(null);
+  const [deleting,       setDeleting]       = useState(false);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -95,6 +101,40 @@ export default function ProjectsPage() {
     setForm({ name: "", location: "" });
     setFormError(null);
     setShowModal(true);
+  }
+
+  function openEdit(project: Project) {
+    setEditProject(project);
+    setEditForm({ name: project.name, location: project.location });
+    setEditError(null);
+  }
+
+  async function handleEdit(e: { preventDefault(): void }) {
+    e.preventDefault();
+    if (!editProject) return;
+    setEditError(null);
+    if (!editForm.name.trim() || !editForm.location.trim()) {
+      setEditError("Name and location are required.");
+      return;
+    }
+    setEditSubmitting(true);
+    const { error: err } = await supabase
+      .from("projects")
+      .update({ name: editForm.name.trim(), location: editForm.location.trim() })
+      .eq("id", editProject.id);
+    setEditSubmitting(false);
+    if (err) { setEditError(err.message); return; }
+    setEditProject(null);
+    fetchProjects();
+  }
+
+  async function handleDelete() {
+    if (!deleteProject) return;
+    setDeleting(true);
+    await supabase.from("projects").delete().eq("id", deleteProject.id);
+    setDeleting(false);
+    setDeleteProject(null);
+    fetchProjects();
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -176,7 +216,13 @@ export default function ProjectsPage() {
         {!loading && projects.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {projects.map((project) => (
-              <ProjectCard key={project.id} project={project} />
+              <ProjectCard
+                key={project.id}
+                project={project}
+                onEdit={() => openEdit(project)}
+                onDelete={() => setDeleteProject(project)}
+                onClick={() => router.push(`/projects/${project.id}`)}
+              />
             ))}
           </div>
         )}
@@ -283,64 +329,152 @@ export default function ProjectsPage() {
           </div>
         </div>
       )}
+      {/* ── Edit modal ── */}
+      {editProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="w-full max-w-md rounded-2xl border p-6"
+            style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-semibold text-white">Edit project</h2>
+              <button onClick={() => setEditProject(null)}
+                className="p-1.5 rounded-lg hover:bg-white/5" style={{ color: "#475569" }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleEdit} className="space-y-4">
+              {["name", "location"].map((field) => (
+                <div key={field}>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: "#94a3b8" }}>
+                    {field === "name" ? "Project name" : "Location"}
+                  </label>
+                  <input type="text" required
+                    value={editForm[field as keyof FormState]}
+                    onChange={(e) => setEditForm((f) => ({ ...f, [field]: e.target.value }))}
+                    className="w-full rounded-lg px-4 py-2.5 text-sm text-white outline-none placeholder:text-slate-600"
+                    style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = "#6366f1")}
+                    onBlur={(e)  => (e.currentTarget.style.borderColor = "#1e2536")}
+                  />
+                </div>
+              ))}
+              {editError && <p className="text-sm" style={{ color: "#fca5a5" }}>{editError}</p>}
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setEditProject(null)}
+                  className="flex-1 py-2.5 rounded-lg text-sm font-medium hover:bg-white/5"
+                  style={{ border: "1px solid #1e2536", color: "#64748b" }}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={editSubmitting}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                  style={{ backgroundColor: "#6366f1" }}>
+                  {editSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" />Saving…</> : "Save changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete confirmation ── */}
+      {deleteProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <div className="w-full max-w-sm rounded-2xl border p-6"
+            style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}>
+            <div className="flex items-center justify-center w-12 h-12 rounded-xl mx-auto mb-4"
+              style={{ backgroundColor: "#1f0a0a" }}>
+              <Trash2 className="w-5 h-5" style={{ color: "#ef4444" }} />
+            </div>
+            <h2 className="text-base font-semibold text-white text-center mb-1">Delete project?</h2>
+            <p className="text-sm text-center mb-5" style={{ color: "#64748b" }}>
+              «{deleteProject.name}» will be permanently deleted.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteProject(null)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium hover:bg-white/5"
+                style={{ border: "1px solid #1e2536", color: "#64748b" }}>
+                Cancel
+              </button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                style={{ backgroundColor: "#ef4444" }}>
+                {deleting ? <><Loader2 className="w-4 h-4 animate-spin" />Deleting…</> : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
 
 // ── Project card ──────────────────────────────────────────────────────────────
 
-function ProjectCard({ project }: { project: Project }) {
+function ProjectCard({
+  project, onEdit, onDelete, onClick,
+}: {
+  project: Project;
+  onEdit:   () => void;
+  onDelete: () => void;
+  onClick:  () => void;
+}) {
   const createdAt = new Date(project.created_at).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+    month: "short", day: "numeric", year: "numeric",
   });
 
   return (
-    <Link
-      href={`/projects/${project.id}`}
-      className="rounded-xl border p-5 flex flex-col gap-4 transition-all hover:border-indigo-500/40 group"
+    <div
+      onClick={onClick}
+      className="rounded-xl border p-5 flex flex-col gap-4 transition-all hover:border-indigo-500/40 group cursor-pointer"
       style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}
     >
       <div className="flex items-start justify-between gap-3">
-        <div
-          className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
-          style={{ backgroundColor: "#1e1b4b" }}
-        >
+        <div className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
+          style={{ backgroundColor: "#1e1b4b" }}>
           <Building2 className="w-5 h-5" style={{ color: "#6366f1" }} />
         </div>
-        <span className="text-xs mt-1 shrink-0" style={{ color: "#334155" }}>
-          {createdAt}
-        </span>
+        {/* Edit + Delete buttons */}
+        <div className="flex items-center gap-1 ml-auto" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onEdit}
+            className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+            style={{ color: "#475569" }}
+            title="Edit"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
+            style={{ color: "#475569" }}
+            title="Delete"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-xs ml-1" style={{ color: "#334155" }}>{createdAt}</span>
+        </div>
       </div>
 
       <div>
         <h3 className="text-sm font-semibold text-white leading-snug">{project.name}</h3>
         <div className="flex items-center gap-1 mt-1.5">
           <MapPin className="w-3 h-3 shrink-0" style={{ color: "#475569" }} />
-          <span className="text-xs" style={{ color: "#64748b" }}>
-            {project.location}
-          </span>
+          <span className="text-xs" style={{ color: "#64748b" }}>{project.location}</span>
         </div>
       </div>
 
-      <div
-        className="flex items-center justify-between pt-3 border-t"
-        style={{ borderColor: "#1e2536" }}
-      >
-        <span className="text-xs" style={{ color: "#475569" }}>
-          Total buildings
-        </span>
+      <div className="flex items-center justify-between pt-3 border-t"
+        style={{ borderColor: "#1e2536" }}>
+        <span className="text-xs" style={{ color: "#475569" }}>Total buildings</span>
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-white">
             {project.total_buildings ?? "—"}
           </span>
-          <ArrowRight
-            className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ color: "#6366f1" }}
-          />
+          <ArrowRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ color: "#6366f1" }} />
         </div>
       </div>
-    </Link>
+    </div>
   );
 }

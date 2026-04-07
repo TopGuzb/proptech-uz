@@ -1,16 +1,26 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import AppShell from "@/components/AppShell";
 import {
   Plus, X, Loader2, Search, Users,
-  Mail, Phone, ChevronDown, Sparkles, Copy, Check,
+  Mail, Phone, ChevronDown, Sparkles, Copy, Check, Home,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ClientStatus = "new" | "contacted" | "viewing" | "reserved" | "bought";
+
+interface LinkedApt {
+  id: string;
+  number: string;
+  floor: number | null;
+  size_m2: number;
+  price: number;
+  status: string;
+}
 
 interface Client {
   id: string;
@@ -20,7 +30,9 @@ interface Client {
   budget_usd: number | null;
   notes: string | null;
   status: ClientStatus;
+  assigned_to: string | null;
   created_at: string;
+  apartments?: LinkedApt[];
 }
 
 interface CreateForm {
@@ -73,6 +85,7 @@ function getRoleCookie(): string | null {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ClientsPage() {
+  const router = useRouter();
   const [role, setRole]               = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [clients, setClients]         = useState<Client[]>([]);
@@ -110,10 +123,9 @@ export default function ClientsPage() {
   const fetchClients = useCallback(async (userRole: string | null, userId: string | null) => {
     setLoading(true);
     setError(null);
-    // Admin sees ALL clients; managers see only their assigned clients
     let query = supabase
       .from("clients")
-      .select("id, full_name, phone, email, budget_usd, notes, status, created_at")
+      .select("id, full_name, phone, email, budget_usd, notes, status, assigned_to, created_at, apartments(id, number, floor, size_m2, price, status)")
       .order("created_at", { ascending: false });
     if (userRole !== "admin" && userId) {
       query = query.eq("assigned_to", userId);
@@ -133,15 +145,22 @@ export default function ClientsPage() {
 
   // ── Create client ──────────────────────────────────────────────────────────
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleCreate(e: { preventDefault(): void }) {
     e.preventDefault();
     setFormError(null);
     if (!form.full_name.trim()) { setFormError("Full name is required."); return; }
 
     setSubmitting(true);
+
+    // Always get fresh user id at submit time — state may be stale
+    const { data: authData } = await supabase.auth.getUser();
+    const uid = authData?.user?.id ?? currentUserId;
+    console.log("[clients] submitting as uid:", uid);
+
     const payload: Record<string, unknown> = {
       full_name: form.full_name.trim(),
       status: "new",
+      ...(uid && { assigned_to: uid }),
     };
     if (form.phone.trim())    payload.phone      = form.phone.trim();
     if (form.email.trim())    payload.email      = form.email.trim();
@@ -149,12 +168,22 @@ export default function ClientsPage() {
     const budget = parseFloat(form.budget_usd);
     if (!isNaN(budget) && budget > 0) payload.budget_usd = budget;
 
-    const { error: err } = await supabase.from("clients").insert(payload);
+    console.log("[clients] insert payload:", payload);
+    const { data: inserted, error: err } = await supabase
+      .from("clients")
+      .insert(payload)
+      .select()
+      .single();
+    console.log("[clients] insert result:", inserted, err);
+
     setSubmitting(false);
-    if (err) { setFormError(err.message); return; }
+    if (err) {
+      setFormError(err.message);
+      return;
+    }
     setForm(EMPTY_FORM);
     setShowCreate(false);
-    fetchClients(role, currentUserId);
+    fetchClients(role, uid ?? currentUserId);
   }
 
   // ── Status change ──────────────────────────────────────────────────────────
@@ -315,7 +344,7 @@ export default function ClientsPage() {
               <table className="w-full">
                 <thead>
                   <tr style={{ borderBottom: "1px solid #1e2536" }}>
-                    {["Name", "Phone", "Email", "Budget (USD)", "Status", "Added", ""].map((h) => (
+                    {["Name", "Phone", "Email", "Budget (USD)", "Apartment", "Status", "Added", ""].map((h) => (
                       <th key={h} className="px-5 py-3 text-left text-xs font-medium whitespace-nowrap"
                         style={{ color: "#475569" }}>{h}</th>
                     ))}
@@ -330,7 +359,8 @@ export default function ClientsPage() {
                     });
                     return (
                       <tr key={client.id}
-                        className="transition-colors hover:bg-white/[0.02]"
+                        onClick={() => router.push(`/clients/${client.id}`)}
+                        className="transition-colors hover:bg-white/[0.02] cursor-pointer"
                         style={{
                           borderBottom: i < filtered.length - 1 ? "1px solid #1e2536" : undefined,
                           opacity: isUpdating ? 0.6 : 1,
@@ -380,8 +410,29 @@ export default function ClientsPage() {
                           {client.budget_usd ? `$${client.budget_usd.toLocaleString()}` : "—"}
                         </td>
 
+                        {/* Linked apartment */}
+                        <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                          {client.apartments?.[0] ? (() => {
+                            const apt = client.apartments![0];
+                            const aptColor = apt.status === "sold" ? "#34d399" : apt.status === "reserved" ? "#fbbf24" : "#a5b4fc";
+                            return (
+                              <div className="flex items-center gap-1.5">
+                                <Home className="w-3 h-3 shrink-0" style={{ color: aptColor }} />
+                                <span className="text-xs font-mono" style={{ color: aptColor }}>
+                                  №{apt.number}
+                                </span>
+                                <span className="text-xs" style={{ color: "#475569" }}>
+                                  {apt.size_m2}м²
+                                </span>
+                              </div>
+                            );
+                          })() : (
+                            <span className="text-xs" style={{ color: "#334155" }}>—</span>
+                          )}
+                        </td>
+
                         {/* Status badge + dropdown */}
-                        <td className="px-5 py-3.5">
+                        <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-2">
                             <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium"
                               style={{ backgroundColor: cfg.bg, color: cfg.text }}>
@@ -412,7 +463,7 @@ export default function ClientsPage() {
                         </td>
 
                         {/* AI Email button */}
-                        <td className="px-5 py-3.5">
+                        <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => handleGenerateEmail(client)}
                             disabled={emailClientId === client.id && emailLoading}
