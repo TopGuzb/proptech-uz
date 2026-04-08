@@ -1,26 +1,69 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --bg:           #080b14;
+  --card:         #0d1117;
+  --border:       rgba(255,255,255,0.08);
+  --accent:       #6366f1;
+  --success:      #10b981;
+  --warning:      #f59e0b;
+  --text:         #e2e8f0;
+  --muted:        rgba(255,255,255,0.4);
+  --font-display: 'Sora', sans-serif;
+  --font-body:    'DM Sans', sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
 }
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar              { width: 4px; height: 4px; }
+::-webkit-scrollbar-track        { background: transparent; }
+::-webkit-scrollbar-thumb        { background: #1e2536; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover  { background: #2d3748; }
+
+/* ── Range slider ──────────────────────────────────────────────────────────── */
+input[type="range"] { accent-color: #6366f1; }
+
+/* ── Login orb animations ──────────────────────────────────────────────────── */
+@keyframes orb-float {
+  0%, 100% { transform: translateY(0)   scale(1);    opacity: 0.08; }
+  50%       { transform: translateY(-30px) scale(1.05); opacity: 0.15; }
+}
+@keyframes orb-float-2 {
+  0%, 100% { transform: translateY(0)   scale(1);    opacity: 0.06; }
+  50%       { transform: translateY(20px)  scale(0.95); opacity: 0.12; }
+}
+.orb-1 { animation: orb-float   8s  ease-in-out infinite; }
+.orb-2 { animation: orb-float-2 10s ease-in-out infinite; }
+.orb-3 { animation: orb-float   12s ease-in-out infinite reverse; }
+
+/* ── Gradient button shine ─────────────────────────────────────────────────── */
+@keyframes shine {
+  from { transform: translateX(-100%) skew(-15deg); }
+  to   { transform: translateX(300%)  skew(-15deg); }
+}
+.btn-shine { position: relative; overflow: hidden; }
+.btn-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+  transform: translateX(-100%) skew(-15deg);
+}
+.btn-shine:hover::after { animation: shine 0.55s ease forwards; }
+
+/* ── Metric card hover ─────────────────────────────────────────────────────── */
+.metric-card {
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.metric-card:hover { transform: translateY(-3px); }
+
+/* ── Project card hover ────────────────────────────────────────────────────── */
+.project-card {
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+.project-card:hover { transform: translateY(-2px); }
