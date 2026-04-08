@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -27,14 +27,23 @@ export default function LoginPage() {
         // Store session token
         document.cookie = `proptech-session=${data.session.access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 
-        // Fetch role from DB — do NOT trust user-supplied role
-        const { data: profile } = await supabase
+        // Ensure user_profiles row exists (auto-create if missing)
+        const { data: existingProfile } = await supabase
           .from("user_profiles")
-          .select("role")
+          .select("id, role")
           .eq("id", data.user.id)
           .single();
 
-        const role = (profile?.role as string) ?? "viewer";
+        if (!existingProfile) {
+          await supabase.from("user_profiles").upsert({
+            id:        data.user.id,
+            email:     data.user.email,
+            role:      "manager",
+            full_name: data.user.email,
+          });
+        }
+
+        const role = (existingProfile?.role as string) ?? "manager";
         document.cookie = `proptech-role=${role}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
 
         router.push(role === "manager" ? "/seller/dashboard" : "/dashboard");
