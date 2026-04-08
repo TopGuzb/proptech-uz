@@ -58,39 +58,45 @@ interface Transaction {
 function MetricCard({ title, value, change, positive, loading, icon, accent }: MetricCardProps) {
   return (
     <div
-      className="rounded-xl p-5 border flex flex-col gap-4"
-      style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}
+      className="metric-card rounded-2xl p-5 flex flex-col gap-4"
+      style={{
+        backgroundColor: "#0d1117",
+        border:          "1px solid rgba(255,255,255,0.07)",
+      }}
     >
       <div className="flex items-start justify-between">
-        <p className="text-sm font-medium" style={{ color: "#64748b" }}>
+        <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.38)" }}>
           {title}
         </p>
         <div
-          className="flex items-center justify-center w-9 h-9 rounded-lg"
-          style={{ backgroundColor: `${accent}18` }}
+          className="flex items-center justify-center w-9 h-9 rounded-xl"
+          style={{ background: `linear-gradient(135deg, ${accent}22, ${accent}10)`, border: `1px solid ${accent}25` }}
         >
           <span style={{ color: accent }}>{icon}</span>
         </div>
       </div>
       <div>
         {loading ? (
-          <div className="h-8 w-24 rounded-lg animate-pulse" style={{ backgroundColor: "#1e2536" }} />
+          <div className="h-8 w-28 rounded-lg animate-pulse" style={{ backgroundColor: "rgba(255,255,255,0.06)" }} />
         ) : (
-          <p className="text-2xl font-bold text-white">{value}</p>
+          <p
+            className="text-3xl text-white"
+            style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}
+          >
+            {value}
+          </p>
         )}
-        {change && (
-          <div className="flex items-center gap-1 mt-1">
+        {change && !loading && (
+          <div className="flex items-center gap-1 mt-1.5">
             {positive ? (
               <ChevronUp className="w-3.5 h-3.5" style={{ color: "#10b981" }} />
             ) : (
               <ChevronDown className="w-3.5 h-3.5" style={{ color: "#ef4444" }} />
             )}
-            <span
-              className="text-xs font-medium"
-              style={{ color: positive ? "#10b981" : "#ef4444" }}
-            >
+            <span className="text-xs font-semibold" style={{ color: positive ? "#10b981" : "#ef4444" }}>
               {change}
             </span>
+            <span className="text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>vs last month</span>
           </div>
         )}
       </div>
@@ -244,11 +250,18 @@ export default function DashboardPage() {
       {/* ── Top bar ── */}
       <header
         className="sticky top-0 z-20 flex items-center justify-between px-6 h-14 border-b shrink-0"
-        style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}
+        style={{ backgroundColor: "#0d1117", borderColor: "rgba(255,255,255,0.06)" }}
       >
         <div>
-          <h1 className="text-sm font-semibold text-white">Overview</h1>
-          <p className="text-xs" style={{ color: "#475569" }}>March 2026 · All projects</p>
+          <h1 className="text-sm font-semibold text-white" style={{ fontFamily: "var(--font-display)" }}>
+            {(() => {
+              const h = new Date().getHours();
+              return h < 12 ? "Good morning 👋" : h < 17 ? "Good afternoon 👋" : "Good evening 👋";
+            })()}
+          </h1>
+          <p className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
+            Overview · All Projects
+          </p>
         </div>
         <div className="relative" ref={notifRef}>
           <button
