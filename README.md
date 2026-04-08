@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PropTech UZ
 
-## Getting Started
+AI-Powered Real Estate Sales Platform for Uzbekistan
 
-First, run the development server:
+## Live Demo
+
+https://proptech-uz.vercel.app
+
+## Tech Stack
+
+- **Next.js 14** + TypeScript
+- **Supabase** (PostgreSQL + Auth + RLS)
+- **Anthropic Claude API** (AI insights & email)
+- **Tailwind CSS** (dark theme)
+- **Recharts** (analytics charts)
+- **Vercel** (deployment)
+
+## Run with Docker
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
+# fill in your keys
+docker-compose up --build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Run locally
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+cp .env.example .env.local
+# fill in your keys
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+ANTHROPIC_API_KEY=
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Features
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Role-based CRM** — Admin / Sales Manager / Viewer
+- **AI Sales Insights** — Claude analyses real sales data
+- **Visual Floor Plan** — interactive apartment grid per floor
+- **Bulk Apartment Generator** — create 100s of units in one click
+- **Client Pipeline** — New → Contacted → Viewing → Reserved → Bought
+- **AI Email Generator** — personalised outreach per client
+- **Instalment Calculator** — monthly payment schedule with interest
+- **Notification Bell** — live feed of recent client activity
+- **Project & Building Management** — full CRUD with edit/delete
+- **Link Apartments to Clients** — track who owns what
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Database Schema
 
-## Deploy on Vercel
+```
+projects → buildings → apartments → clients
+user_profiles (role: admin | manager | viewer)
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Roles
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Feature        | Admin | Manager  | Viewer |
+|----------------|-------|----------|--------|
+| Dashboard      | ✓     | ✓        | ✓      |
+| All Clients    | ✓     | own only | —      |
+| Projects       | ✓     | read     | —      |
+| Apartments     | ✓     | ✓        | —      |
+| Calculator     | ✓     | ✓        | ✓      |
+| Users          | ✓     | —        | —      |
+| AI Insights    | ✓     | —        | —      |
