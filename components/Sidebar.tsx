@@ -33,6 +33,7 @@ const NAV_BY_ROLE: Record<Role, NavItem[]> = {
   manager: [
     { href: "/seller/dashboard", label: "My Dashboard", icon: BarChart2  },
     { href: "/clients",          label: "My Clients",   icon: Users      },
+    { href: "/apartments",       label: "Apartments",   icon: Home       },
     { href: "/calculator",       label: "Calculator",   icon: Calculator },
   ],
   viewer: [
