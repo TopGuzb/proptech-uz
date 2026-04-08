@@ -426,12 +426,31 @@ function ProjectCard({
   return (
     <div
       onClick={onClick}
-      className="rounded-xl border p-5 flex flex-col gap-4 transition-all hover:border-indigo-500/40 group cursor-pointer"
-      style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}
+      className="project-card rounded-2xl flex flex-col gap-0 group cursor-pointer overflow-hidden"
+      style={{
+        backgroundColor: "#0d1117",
+        border:          "1px solid rgba(255,255,255,0.07)",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 32px rgba(99,102,241,0.15)";
+        (e.currentTarget as HTMLElement).style.borderColor = "rgba(99,102,241,0.4)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.boxShadow = "none";
+        (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.07)";
+      }}
     >
+      {/* Gradient accent bar */}
+      <div
+        className="h-1 w-full"
+        style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6)" }}
+      />
+      <div className="p-5 flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
-          style={{ backgroundColor: "#1e1b4b" }}>
+        <div
+          className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0"
+          style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(139,92,246,0.1))", border: "1px solid rgba(99,102,241,0.2)" }}
+        >
           <Building2 className="w-5 h-5" style={{ color: "#6366f1" }} />
         </div>
         {/* Edit + Delete buttons */}
@@ -465,7 +484,7 @@ function ProjectCard({
       </div>
 
       <div className="flex items-center justify-between pt-3 border-t"
-        style={{ borderColor: "#1e2536" }}>
+        style={{ borderColor: "rgba(255,255,255,0.06)" }}>
         <span className="text-xs" style={{ color: "#475569" }}>Total buildings</span>
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-white">
@@ -475,6 +494,7 @@ function ProjectCard({
             style={{ color: "#6366f1" }} />
         </div>
       </div>
+      </div>{/* /p-5 wrapper */}
     </div>
   );
 }
