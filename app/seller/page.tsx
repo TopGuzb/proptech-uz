@@ -1,3 +1,22 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/seller/page.tsx
+//
+// Route:  /seller   (managers only)
+//
+// The manager's "showroom" view — a clean, customer-friendly catalogue of
+// available apartments they can show on a phone/tablet during a viewing.
+//
+// What's here:
+//   • Big tile grid of apartments where  status = 'available'.
+//   • Filters (project, rooms, price range) — the same ones a client would
+//     ask about.
+//   • Click a tile → opens a presentation drawer with photos, floor plan,
+//     and a "Reserve for client" action that sets  status = 'reserved'  and
+//     links the apartment to a chosen client.
+//
+// Distinct from /seller/dashboard which is the manager's analytics home.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";

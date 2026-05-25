@@ -1,3 +1,21 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/clients/page.tsx
+//
+// Route:  /clients   (admins see everyone, managers see their own only)
+//
+// Master client list. Click a row → /clients/[id] for the full profile.
+//
+// Sections:
+//   • Search bar + status filter chips (New / Contacted / Viewing / Reserved /
+//     Bought) — filtering happens client-side over the rows we fetched.
+//   • "+ New client" button opens a modal that INSERTs into  clients.
+//   • Table of clients with pipeline-stage pill, budget, assigned manager.
+//
+// Role enforcement here is belt-and-braces:
+//   middleware allows /clients for everyone authenticated, then we additionally
+//   filter by manager_id = currentUser.id when the user's role is "manager".
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";

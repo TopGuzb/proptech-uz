@@ -1,3 +1,37 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/api/bulk-generate/route.ts
+//
+// Endpoint:  POST /api/bulk-generate
+// Called by: app/projects/[id]/page.tsx  (the "Bulk Generate" modal — admins
+//            create whole buildings of apartments in one shot).
+//
+// Input body:  { building_id, project_id, floors_count, apartment_types[] }
+//   apartment_types example:  [{ rooms: 2, count: 4, size_m2: 65, price: 80000 }]
+//                  → on every floor we create 4 two-room apartments.
+//
+// Pipeline:
+//   1. Look up which floors (1..floors_count) already exist for this building.
+//   2. INSERT the missing floors and capture their new IDs.
+//   3. For every floor, walk apartment_types and build apartment rows.
+//      Apartment numbers follow  floor*100 + index   (so 1F → 101,102…).
+//   4. INSERT all apartments in a single batch.
+//
+// Returns the number of floors and apartments actually created.
+//
+// Performance note:
+//   The whole job is THREE round-trips total — one SELECT for existing floors,
+//   one INSERT for the missing floors, one INSERT for all the apartments.
+//   A naive per-floor loop would scale linearly with floors_count and choke
+//   on big buildings (this endpoint can produce 400+ apartments at once).
+//   The Map<number,string> lets us look up floor IDs in O(1) without
+//   re-querying the DB after each insert.
+//
+// Why apartment numbers use floor*100 + index:
+//   It's the convention Tashkent developers already use on paper — apartment
+//   305 is unambiguously floor 3, unit 5. Matching that mental model means no
+//   training cost for sales managers using the platform.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
@@ -41,7 +75,9 @@ export async function POST(req: NextRequest) {
 
     if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
 
-    // Build floor_number → id map from existing floors
+    // Build floor_number → id map from existing floors. Using a Map gives us
+    // O(1) lookups in the apartment-building loop below; we'd otherwise be
+    // running a DB query per floor or doing N² array.find() calls.
     const floorMap = new Map<number, string>(
       (existingFloors ?? []).map((f) => [f.floor_number as number, f.id as string])
     );

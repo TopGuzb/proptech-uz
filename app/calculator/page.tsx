@@ -1,3 +1,31 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/calculator/page.tsx
+//
+// Route:  /calculator   (every authenticated role)
+//
+// Instalment / mortgage calculator. Pure client-side maths — no Supabase
+// reads or writes here.
+//
+// Inputs:  property price, down-payment %, term (months), annual interest %.
+// Outputs: monthly payment, total interest, full amortisation schedule
+//          (principal vs interest split per month).
+// "Download" button exports the schedule as CSV.
+//
+// Formula used: standard amortising loan
+//   M = P × (r(1+r)^n) / ((1+r)^n − 1)
+// where r = monthly rate (annual / 12 / 100), n = term in months,
+//       P = principal (price − down-payment).
+//
+// Edge case: when interest rate is 0% the formula above divides by zero, so
+// we fall back to a simple  P / n  split.
+//
+// Why client-side only?
+//   The interview research surfaced рассрочка (instalment) as the dominant
+//   payment scheme, not bank mortgages. There's no backend lookup needed —
+//   the developer sets the rate themselves. Keeping it client-side means
+//   instant feedback as the user drags sliders and zero server load.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useState, useMemo } from "react";

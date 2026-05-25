@@ -1,3 +1,21 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/projects/page.tsx
+//
+// Route:  /projects   (all roles can see; admins can edit/delete)
+//
+// Grid of project cards (one card per development). Each card shows:
+//   • Cover image / placeholder gradient
+//   • Project name, location, total apartments, sold count
+//   • Hover glow + click → /projects/[id]
+//
+// Admin-only controls:
+//   • "+ New Project" modal  → INSERTs into  projects
+//   • Edit / Delete on each card  → UPDATE / DELETE
+//
+// Recent style refresh:  redesigned cards with gradient bar + hover glow
+// (commit b021571).
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useEffect, useState } from "react";

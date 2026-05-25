@@ -1,3 +1,24 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// components/Sidebar.tsx
+//
+// Left-hand navigation panel. Lives inside <AppShell>. The links shown here
+// depend on the user's role (admin / manager / viewer), which is read from
+// the "proptech-role" cookie that was set during login.
+//
+// Quick map of this file:
+//   • Logo block at the top     → just branding
+//   • <nav> in the middle       → role-aware menu (NAV_BY_ROLE map below)
+//   • Bottom block              → user avatar + role pill + Sign out button
+//
+// Role → routes:
+//   admin    : /dashboard, /projects, /apartments, /clients, /calculator,
+//              /users, /pricing
+//   manager  : /seller/dashboard, /clients (own), /apartments, /calculator
+//   viewer   : /dashboard, /calculator
+//
+// Sign out clears Supabase session AND both cookies, then sends user to /login.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -6,8 +27,10 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Building2, LayoutDashboard, FolderKanban, Home,
   Users, BarChart2, ShieldCheck, LogOut, Calculator, CreditCard,
+  ArrowRightLeft,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { BRAND } from "@/lib/branding";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -55,8 +78,44 @@ function getRoleCookie(): Role | null {
   return m ? (decodeURIComponent(m[1]) as Role) : null;
 }
 
+function getPMRoleCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(/(?:^|; )proptech-pm-role=([^;]*)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 function initials(email: string): string {
   return email.slice(0, 2).toUpperCase();
+}
+
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const { href, label, icon: Icon } = item;
+  const active = pathname === href || pathname.startsWith(href + "/");
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150"
+      style={{
+        backgroundColor: active ? "rgba(99,102,241,0.12)" : "transparent",
+        color:           active ? "#a5b4fc" : "rgba(255,255,255,0.45)",
+        borderLeft:      active ? "3px solid #6366f1" : "3px solid transparent",
+        marginLeft:      "-2px",
+        paddingLeft:     active ? "calc(0.75rem - 1px)" : "0.75rem",
+      }}
+      onMouseEnter={(e) => {
+        if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.04)";
+      }}
+      onMouseLeave={(e) => {
+        if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+      }}
+    >
+      <Icon
+        className="w-4 h-4 shrink-0"
+        style={{ color: active ? "#6366f1" : "rgba(255,255,255,0.3)" }}
+      />
+      <span className={active ? "font-semibold" : "font-normal"}>{label}</span>
+    </Link>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -65,17 +124,28 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
   const [role,      setRole]      = useState<Role | null>(null);
+  const [pmRole,    setPmRole]    = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
     setRole(getRoleCookie());
+    setPmRole(getPMRoleCookie());
     supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null));
   }, []);
+
+  // Where should "Go to PM Portal" actually take this user?
+  const pmDest =
+    pmRole === "property_manager" ? "/pm/dashboard" :
+    pmRole === "dispatcher"       ? "/dispatcher/dashboard" :
+    pmRole === "vendor"           ? "/vendor/dashboard" :
+    pmRole === "resident"         ? "/resident/dashboard" :
+    null;
 
   async function handleSignOut() {
     await supabase.auth.signOut();
     document.cookie = "proptech-session=; path=/; max-age=0";
     document.cookie = "proptech-role=;    path=/; max-age=0";
+    document.cookie = "proptech-pm-role=; path=/; max-age=0";
     router.push("/login");
   }
 
@@ -105,7 +175,7 @@ export default function Sidebar() {
           className="text-sm text-white tracking-tight"
           style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}
         >
-          PropTech UZ
+          {BRAND.name}
         </span>
       </div>
 
@@ -118,37 +188,31 @@ export default function Sidebar() {
           Menu
         </p>
         <div className="space-y-0.5">
-          {navItems.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(href + "/");
-            return (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150"
-                style={{
-                  backgroundColor: active ? "rgba(99,102,241,0.12)" : "transparent",
-                  color:           active ? "#a5b4fc" : "rgba(255,255,255,0.45)",
-                  borderLeft:      active ? "3px solid #6366f1" : "3px solid transparent",
-                  marginLeft:      "-2px",
-                  paddingLeft:     active ? "calc(0.75rem - 1px)" : "0.75rem",
-                }}
-                onMouseEnter={(e) => {
-                  if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.04)";
-                }}
-                onMouseLeave={(e) => {
-                  if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }}
-              >
-                <Icon
-                  className="w-4 h-4 shrink-0"
-                  style={{ color: active ? "#6366f1" : "rgba(255,255,255,0.3)" }}
-                />
-                <span className={active ? "font-semibold" : "font-normal"}>{label}</span>
-              </Link>
-            );
-          })}
+          {navItems.map((item) => (
+            <NavLink key={item.href} item={item} pathname={pathname} />
+          ))}
         </div>
       </nav>
+
+      {/* ── PM Portal switcher (only if user has any pm_role) ── */}
+      {pmDest && (
+        <div className="px-3 pt-3 pb-1 shrink-0">
+          <Link
+            href={pmDest}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              backgroundColor: "rgba(16,185,129,0.10)",
+              color:           "#6ee7b7",
+              border:          "1px solid rgba(16,185,129,0.25)",
+            }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "rgba(16,185,129,0.18)")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = "rgba(16,185,129,0.10)")}
+          >
+            <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" />
+            Перейти в PM Portal
+          </Link>
+        </div>
+      )}
 
       {/* ── User info + sign out ── */}
       <div

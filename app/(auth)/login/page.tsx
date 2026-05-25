@@ -1,8 +1,42 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/(auth)/login/page.tsx
+//
+// Route:  /login   (public — middleware lets it through)
+//
+// This is the entry door to the app. The big things happening here:
+//   1. handleSubmit() — calls Supabase auth, then on success:
+//        • saves the access token in cookie  "proptech-session"
+//        • makes sure a row exists in user_profiles  (creates one as "manager"
+//          if this is the user's first login)
+//        • saves the user's role in cookie  "proptech-role"
+//        • redirects to /seller/dashboard (managers) or /dashboard (others)
+//   2. Visual layer — three glowing gradient orbs + a frosted-glass card
+//      containing the email + password form.
+//
+// The cookies set here are the same ones middleware.ts checks on every
+// subsequent request, so don't rename them in just one place.
+//
+// Cookie strategy (used in tandem with middleware.ts):
+//   • proptech-session  — the Supabase JWT (access_token); proves identity.
+//   • proptech-role     — the role string; lets middleware redirect without a
+//     DB lookup. Cached on login → role changes only take effect next session.
+//   Both cookies use SameSite=Lax to mitigate CSRF and a 7-day max-age so
+//   users aren't logged out aggressively.
+//
+// First-login auto-provisioning:
+//   If user_profiles has no row for this user, we upsert one as "manager".
+//   Admins are created manually in Supabase / via /users/[id]. This means
+//   anyone who self-signs-up only ever gets manager-level access — defensive
+//   default.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { BRAND } from "@/lib/branding";
 import { Building2, Eye, EyeOff, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
@@ -28,7 +62,7 @@ export default function LoginPage() {
         // Ensure user_profiles row exists
         const { data: existingProfile } = await supabase
           .from("user_profiles")
-          .select("id, role")
+          .select("id, role, pm_role")
           .eq("id", data.user.id)
           .single();
 
@@ -41,9 +75,24 @@ export default function LoginPage() {
           }, { onConflict: "id", ignoreDuplicates: true });
         }
 
-        const role = (existingProfile?.role as string) ?? "manager";
-        document.cookie = `proptech-role=${role}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
-        router.push(role === "manager" ? "/seller/dashboard" : "/dashboard");
+        const role   = (existingProfile?.role    as string) ?? "manager";
+        const pmRole = (existingProfile?.pm_role as string | null) ?? null;
+        const week   = 60 * 60 * 24 * 7;
+
+        document.cookie = `proptech-role=${role}; path=/; max-age=${week}; SameSite=Lax`;
+        if (pmRole) {
+          document.cookie = `proptech-pm-role=${pmRole}; path=/; max-age=${week}; SameSite=Lax`;
+        } else {
+          document.cookie = `proptech-pm-role=; path=/; max-age=0`;
+        }
+
+        // PM roles take precedence: residents/dispatchers/vendors live in
+        // their own portals. property_manager shares /dashboard with admins.
+        let dest = role === "manager" ? "/seller/dashboard" : "/dashboard";
+        if      (pmRole === "resident")   dest = "/resident/dashboard";
+        else if (pmRole === "dispatcher") dest = "/dispatcher/dashboard";
+        else if (pmRole === "vendor")     dest = "/vendor/dashboard";
+        router.push(dest);
       }
     } finally {
       setLoading(false);
@@ -94,10 +143,10 @@ export default function LoginPage() {
             className="text-2xl text-white"
             style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}
           >
-            PropTech UZ
+            {BRAND.name}
           </h1>
           <p className="text-sm mt-1.5" style={{ color: "rgba(255,255,255,0.38)" }}>
-            Real estate platform for Uzbekistan
+            {BRAND.tagline}
           </p>
         </div>
 
@@ -196,8 +245,18 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-xs mt-8" style={{ color: "rgba(255,255,255,0.18)" }}>
-          © {new Date().getFullYear()} PropTech UZ · All rights reserved
+        <div className="mt-6 pt-6 text-center" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <Link
+            href="/pm/login"
+            className="text-xs font-medium transition-colors hover:underline"
+            style={{ color: "#34d399" }}
+          >
+            Я работаю с управлением недвижимости → PM Portal
+          </Link>
+        </div>
+
+        <p className="text-center text-xs mt-6" style={{ color: "rgba(255,255,255,0.18)" }}>
+          © {new Date().getFullYear()} {BRAND.legalName} · All rights reserved
         </p>
       </div>
     </div>

@@ -1,3 +1,15 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/page.tsx
+//
+// This is the placeholder Next.js starter page that ships with `create-next-app`.
+// In normal use it isn't shown — middleware.ts redirects unauthenticated users
+// to /login, and authenticated users get sent straight to /dashboard or
+// /seller/dashboard based on their role.
+//
+// You can either delete this file or replace it with a proper public landing
+// page if you ever want a real homepage at "/".
+// ─────────────────────────────────────────────────────────────────────────────
+
 import Image from "next/image";
 
 export default function Home() {

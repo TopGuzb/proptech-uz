@@ -1,3 +1,19 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/apartments/page.tsx
+//
+// Route:  /apartments   (admin + manager — viewers don't see this in sidebar)
+//
+// Cross-project apartment list. Useful when you want every unit regardless
+// of which building it lives in.
+//
+// Features:
+//   • Filters: project, building, status, rooms count, price range.
+//   • Inline status switcher per row (available / reserved / sold).
+//   • Click a row → opens a side panel with full unit details +
+//     "link to client" picker.
+//   • Pagination — heavy lists shouldn't all fetch at once.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";

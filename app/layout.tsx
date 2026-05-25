@@ -1,9 +1,22 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/layout.tsx
+//
+// Root layout — wraps EVERY page in the app. Mostly sets:
+//   • <html>, <body> with our dark theme background
+//   • Google Fonts preload (Sora for headings, DM Sans for body text)
+//   • the page <title> + meta description (see `metadata` below)
+//
+// Add anything that should appear on every page (analytics scripts, global
+// providers, toast container, etc.) here.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import type { Metadata } from "next";
 import "./globals.css";
+import { BRAND } from "@/lib/branding";
 
 export const metadata: Metadata = {
-  title: "PropTech CRM — Uzbekistan",
-  description: "AI-powered real estate CRM platform for Uzbekistan",
+  title: `${BRAND.name} — ${BRAND.tagline}`,
+  description: `${BRAND.tagline} · ${BRAND.legalName}`,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

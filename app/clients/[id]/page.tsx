@@ -1,3 +1,27 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/clients/[id]/page.tsx
+//
+// Route:  /clients/[id]   (one client's full profile)
+//
+// The biggest page in the app — every interaction with a client lives here.
+//
+// Tabs / sections:
+//   1. Header: name, status pill, edit button, delete button
+//   2. Pipeline stepper:  New → Contacted → Viewing → Reserved → Bought
+//      Click any stage → updates  clients.status  in Supabase.
+//   3. Profile card: phone, email, budget, notes (all editable inline)
+//   4. Linked apartments: pull every apartments row whose  client_id = this id
+//      Lets you link/unlink apartments and trigger "Mark as Sold".
+//   5. AI Email panel → calls POST /api/ai-email and shows the suggested
+//      subject + body. The user copies it; the app does NOT auto-send.
+//   6. Activity log: recent updates to this client.
+//
+// Access:
+//   - Admins:   any client.
+//   - Managers: only clients where  manager_id = currentUser.id  (RLS in
+//               Supabase backs this up; we also gate in the fetch).
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";

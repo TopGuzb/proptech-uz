@@ -1,3 +1,17 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/users/page.tsx
+//
+// Route:  /users   (ADMINS ONLY — middleware.ts blocks everyone else)
+//
+// Lists every row in  user_profiles. From here an admin can:
+//   • Search / filter by role (admin / manager / viewer).
+//   • Click a user → /users/[id] for full edit form.
+//   • Quick role switcher inline on the row (bumps  user_profiles.role).
+//
+// Note: creating a NEW user is done in Supabase Auth (sign-up), not here.
+// This page only manages roles & profile metadata for existing users.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";

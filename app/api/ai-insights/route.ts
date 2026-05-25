@@ -1,3 +1,35 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/api/ai-insights/route.ts
+//
+// Endpoint:  GET /api/ai-insights
+// Called by: app/dashboard/page.tsx  (the "Analyse with AI" button)
+//
+// Three steps:
+//   1. Pull every apartment's status + price from Supabase and crunch totals
+//      (sold, reserved, available, revenue, conversion %, avg sale price).
+//   2. Build a Russian prompt and ask Claude (Sonnet) for EXACTLY 3 insights
+//      as a plain JSON array — no markdown, no extra text.
+//   3. Pull the JSON array out of Claude's reply and return  { insights: [...] }
+//
+// If Claude wraps its answer in extra prose, the regex on `jsonMatch` rescues
+// the array. Anything else 500s with a useful message.
+// Requires env var: ANTHROPIC_API_KEY.
+//
+// Why claude-sonnet-4-0 specifically:
+//   - Russian-language quality is noticeably better than Haiku for nuanced
+//     business phrasing (sales insights need to read naturally, not literally
+//     translated).
+//   - Reliable structured JSON output — Sonnet rarely deviates from the
+//     "return only a JSON array" instruction.
+//   - Cost-per-call is low enough to be sustainable; Opus would be overkill
+//     for a 3-bullet summary task.
+//
+// Why we compute the metrics in code, not let Claude do the maths:
+//   LLMs are unreliable at arithmetic on long lists. Doing the totals in JS
+//   gives Claude clean, trustworthy numbers to reason about — its job is the
+//   commentary, not the calculation.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
@@ -60,7 +92,9 @@ export async function GET() {
     const textBlock = message.content.find((b) => b.type === "text");
     const rawText   = textBlock?.type === "text" ? textBlock.text.trim() : "";
 
-    // Extract JSON array even if Claude adds extra text
+    // Defensive parsing — even with explicit "no markdown" instructions Claude
+    // occasionally wraps the JSON in prose like "Sure, here are the insights:
+    // [...]". The non-greedy [\s\S]*? grabs the first [...] block regardless.
     const jsonMatch = rawText.match(/\[[\s\S]*?\]/);
     if (!jsonMatch) {
       return NextResponse.json(

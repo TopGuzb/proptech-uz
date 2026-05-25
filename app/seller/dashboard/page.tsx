@@ -1,3 +1,22 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/seller/dashboard/page.tsx
+//
+// Route:  /seller/dashboard   (managers only — admins/viewers get redirected
+//                              to /dashboard by middleware.ts)
+//
+// The manager's home screen — focused on THEIR pipeline only.
+//
+// Sections:
+//   1. Greeting + personal stats (clients in pipeline, deals closed this month,
+//      personal revenue).
+//   2. Quick-add client button (opens same modal as /clients).
+//   3. "Hot leads" list  — clients in Reserved / Viewing stages, sorted by
+//      most recent activity.
+//   4. Recent activity feed scoped to manager_id = currentUser.id.
+//
+// All Supabase queries here filter by manager_id; no admin-wide aggregates.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";

@@ -1,3 +1,20 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/pricing/page.tsx
+//
+// Route:  /pricing   (visible from sidebar — added in commit 2bcc698)
+//
+// Static marketing-style pricing page. No Supabase calls, no API calls.
+//
+// Layout:
+//   • Hero header
+//   • Monthly / Annual toggle (annual = ~20% off)
+//   • Three plan cards — Starter, Pro (highlighted), Enterprise
+//     Each card lists features with check icons.
+//   • FAQ accordion at the bottom (chevron toggles open/close).
+//
+// Buttons here are decorative for now — a real billing flow is not wired up.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useState } from "react";

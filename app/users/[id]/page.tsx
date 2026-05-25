@@ -1,3 +1,18 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/users/[id]/page.tsx
+//
+// Route:  /users/[id]   (admins only)
+//
+// Full edit form for one user_profiles row.
+//
+// Editable fields:  full_name, phone, role (admin/manager/viewer), avatar URL.
+// Read-only:        email (managed by Supabase Auth), id, created_at.
+//
+// Saves are a single  UPDATE user_profiles SET ... WHERE id = :id.
+// Changing role here takes effect on the user's NEXT login (the role cookie
+// is written at sign-in — see app/(auth)/login/page.tsx).
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";

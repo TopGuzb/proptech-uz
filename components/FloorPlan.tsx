@@ -1,3 +1,38 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// components/FloorPlan.tsx
+//
+// The big interactive "Visual Floor Plan" widget. Used inside the project
+// detail page (app/projects/[id]/page.tsx) for each building tab.
+//
+// What it does:
+//   1. Fetches all floors + apartments + manager list for one building
+//   2. Renders a header with totals (total / sold / reserved / available /
+//      revenue) plus a coloured progress bar
+//   3. Lists every floor (top → bottom) with all apartment cards on it
+//   4. Click an apartment card → modal opens with details:
+//        • price, $/m², size
+//        • status switcher (available | reserved | sold)  ← updates DB
+//        • linked buyer card (if reserved/sold) with link to /clients/[id]
+//        • assign-to-manager dropdown
+//
+// Props:
+//   building_id   – which building to show
+//   refreshKey    – bump this number from the parent to force a re-fetch
+//                   (used after the bulk-generate or CSV import finishes)
+//
+// Status colour map lives in the `S` constant below.
+// All UI text is in Russian (target users are RU-speaking sales managers).
+//
+// Design rationale:
+//   The status-colour scheme (available = green, reserved = amber, sold = grey)
+//   matches the convention used on physical floor-plan posters in Tashkent
+//   sales offices — same mental model, no retraining cost.
+//
+//   The `refreshKey` prop is the React idiom for "force this child to refetch"
+//   without lifting all of FloorPlan's state into the parent. The parent just
+//   does setRefreshKey(k => k + 1) after a bulk operation.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";

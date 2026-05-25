@@ -1,3 +1,24 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/projects/[id]/page.tsx
+//
+// Route:  /projects/[id]   (project detail — buildings + apartments)
+//
+// Layout:
+//   1. Project header: name, address, edit button (admin only)
+//   2. Buildings tab strip:  switch which building to view
+//      "+ New building" button → INSERT into  buildings
+//   3. For the selected building:
+//        • Floor selector (1, 2, 3…)
+//        • Visual Floor Plan widget  (see components/FloorPlan.tsx)
+//        • Apartments table for that floor
+//   4. Bulk actions (admin only):
+//        • "Bulk Generate"  → POST /api/bulk-generate
+//        • "Import CSV"     → POST /api/import-apartments
+//
+// The apartment status colours used in the floor plan:
+//   green = available · amber = reserved · grey = sold.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";

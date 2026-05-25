@@ -1,3 +1,33 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/api/import-apartments/route.ts
+//
+// Endpoint:  POST /api/import-apartments
+// Called by: app/projects/[id]/page.tsx  (the "Import CSV" flow — admins paste
+//            in CSV rows that the page already parsed into JSON before sending).
+//
+// Input body:  { building_id, project_id, rows: ImportRow[] }
+//   ImportRow = { number, floor, rooms, size_m2, price, status }
+//
+// Pipeline:
+//   1. Collect every distinct floor number in the rows.
+//   2. Look up which of those floors already exist; INSERT the missing ones.
+//   3. Validate each row (must have apartment number + a known floor) and skip
+//      the bad ones into an `errors` list — the import is partial-success.
+//   4. INSERT the good apartment rows in a single batch.
+//
+// Returns:  { imported, errors, total }
+//
+// Why partial-success rather than all-or-nothing?
+//   A real spreadsheet from a developer is never perfectly clean — there are
+//   always 2-3 typos in 200 rows. Rejecting the whole import for one bad row
+//   would force the user to clean their CSV before retrying, which is exactly
+//   the manual work the platform is supposed to remove. Instead we import
+//   what we can and surface the bad rows so they can be fixed and re-uploaded.
+//
+// The `validStatuses` Set defends against arbitrary status strings sneaking
+// in from the CSV (anything unknown silently becomes "available").
+// ─────────────────────────────────────────────────────────────────────────────
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 

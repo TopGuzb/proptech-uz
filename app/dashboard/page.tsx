@@ -1,3 +1,21 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// app/dashboard/page.tsx
+//
+// Route:  /dashboard   (admin + viewer only — middleware bounces managers
+//                       to /seller/dashboard)
+//
+// This is the main analytics dashboard. Sections, top to bottom:
+//   1. Greeting header with role badge
+//   2. Four metric cards  (revenue, sold, reserved, conversion)
+//   3. Charts row         (sales over time + status breakdown)
+//   4. Recent activity feed (notifications bell content inline)
+//   5. AI Insights panel  → calls GET /api/ai-insights when user clicks
+//                            "Analyse with AI"
+//
+// Data sources: pulls everything from Supabase tables  apartments, clients,
+// projects, user_profiles. No props — it's a top-level page.
+// ─────────────────────────────────────────────────────────────────────────────
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -8,7 +26,9 @@ import {
 import {
   Building2, TrendingUp, DollarSign, Home, Bell, Search,
   ChevronUp, ChevronDown, Sparkles, Lightbulb, Loader2,
+  Wrench, Users as UsersIcon, Receipt, Gauge,
 } from "lucide-react";
+import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import { supabase } from "@/lib/supabase";
 
@@ -112,8 +132,17 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+function getRoleCookie(): "admin" | "manager" | "viewer" | null {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(/(?:^|; )proptech-role=([^;]*)/);
+  return m ? (decodeURIComponent(m[1]) as "admin" | "manager" | "viewer") : null;
+}
+
 export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [role, setRole] = useState<"admin" | "manager" | "viewer" | null>(null);
+
+  useEffect(() => { setRole(getRoleCookie()); }, []);
 
   // ── Real metrics ──────────────────────────────────────────────────────────
   const [metricsLoading, setMetricsLoading] = useState(true);
@@ -568,6 +597,60 @@ export default function DashboardPage() {
             </table>
           </div>
         </div>
+        {/* ── Property Management (admin only) ── */}
+        {role === "admin" && (
+          <div
+            className="rounded-xl border"
+            style={{ backgroundColor: "#0d1117", borderColor: "#1e2536" }}
+          >
+            <div
+              className="flex items-center justify-between px-5 py-4 border-b"
+              style={{ borderColor: "#1e2536" }}
+            >
+              <div>
+                <h2 className="text-sm font-semibold text-white">Property Management</h2>
+                <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>
+                  Эксплуатация зданий, жильцы и подрядчики
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 p-5">
+              <PMTile
+                href="/pm/requests"
+                title="Активные заявки"
+                value="—"
+                hint="Заявки на обслуживание"
+                accent="#f59e0b"
+                icon={<Wrench className="w-4 h-4" />}
+              />
+              <PMTile
+                href="/pm/vendors"
+                title="Vendor база"
+                value="—"
+                hint="Подрядчики и рейтинги"
+                accent="#6366f1"
+                icon={<UsersIcon className="w-4 h-4" />}
+              />
+              <PMTile
+                href="/pm/invoices"
+                title="Платежи за PM"
+                value="—"
+                hint="Счета жильцам"
+                accent="#10b981"
+                icon={<Receipt className="w-4 h-4" />}
+              />
+              <PMTile
+                href="/pm/meters"
+                title="Потребление коммуналки"
+                value="—"
+                hint="Электр. · Газ · Вода"
+                accent="#8b5cf6"
+                icon={<Gauge className="w-4 h-4" />}
+              />
+            </div>
+          </div>
+        )}
+
         {/* ── AI Insights ── */}
         <div
           className="rounded-xl border"
@@ -674,5 +757,53 @@ export default function DashboardPage() {
         </div>
       </main>
     </AppShell>
+  );
+}
+
+interface PMTileProps {
+  href: string;
+  title: string;
+  value: string;
+  hint: string;
+  accent: string;
+  icon: React.ReactNode;
+}
+
+function PMTile({ href, title, value, hint, accent, icon }: PMTileProps) {
+  return (
+    <Link
+      href={href}
+      className="rounded-xl p-4 flex flex-col gap-3 transition-colors hover:bg-white/[0.02]"
+      style={{ backgroundColor: "#080b14", border: "1px solid #1e2536" }}
+    >
+      <div className="flex items-start justify-between">
+        <p
+          className="text-xs font-medium uppercase tracking-wider"
+          style={{ color: "rgba(255,255,255,0.38)" }}
+        >
+          {title}
+        </p>
+        <div
+          className="flex items-center justify-center w-8 h-8 rounded-lg"
+          style={{
+            background: `linear-gradient(135deg, ${accent}22, ${accent}10)`,
+            border: `1px solid ${accent}25`,
+          }}
+        >
+          <span style={{ color: accent }}>{icon}</span>
+        </div>
+      </div>
+      <div>
+        <p
+          className="text-2xl text-white"
+          style={{ fontFamily: "var(--font-display)", fontWeight: 700 }}
+        >
+          {value}
+        </p>
+        <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.32)" }}>
+          {hint}
+        </p>
+      </div>
+    </Link>
   );
 }
